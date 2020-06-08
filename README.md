@@ -21,3 +21,17 @@ This chromosome ID is learned by parsing the VCF file.
 Format of output table is tab-delimited with columns:
 Position, REF_ALLELE, ALT_ALLELE, rsID, AF, GenotypeQ, DP, VCFA0, VCFA1, BAMnREF, BAMnALT, P(IBD0), P(IBD1), P(IBD2)
 ```
+
+### summarize-comparison.pl
+```
+summarize-comparison.pl Summarizes output of compare-vcf2bam.pl
+Writes the aggregate probabilities across bins of the input file.
+These bins can be plotted to see regional trends.
+-b <bin size; default = 1000000>
+-q <Genotype Quality cutoff; default = 40>
+-l <Low coverage cutoff for reference genotype; default = 5>
+-h <High coverage cutoff for reference genotype; default = 12>
+-L <Low coverage cutoff for comparison data; default = 1>
+-H <High coverage cutoff for comparison data; default = 4>
+-c <input comparison table file>
+```
