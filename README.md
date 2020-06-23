@@ -27,7 +27,8 @@ Position, REF_ALLELE, ALT_ALLELE, rsID, AF, GenotypeQ, DP, VCFA0, VCFA1, BAMnREF
 summarize-comparison.pl Summarizes output of compare-vcf2bam.pl
 Writes the aggregate probabilities across bins of the input file.
 These bins can be plotted to see regional trends.
--b <bin size; default = 1000000>
+Output format is: POS_START POS_END AGGR_IBD0 AGGR_IBD1 AGGR_IBD2 NUM_SITES
+-n <number of sites per bin; default = 100>
 -q <Genotype Quality cutoff; default = 40>
 -l <Low coverage cutoff for reference genotype; default = 5>
 -h <High coverage cutoff for reference genotype; default = 12>
