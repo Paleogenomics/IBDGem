@@ -61,7 +61,7 @@ File_Src* reset_FS( File_Src* fs ) {
     return NULL;
   }
 
-  strcpy( fs->fn, fn );
+  strcpy( fn, fs->fn );
   destroy_FS( fs );
   return init_FS( fn );
 }
