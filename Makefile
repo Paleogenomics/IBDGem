@@ -1,6 +1,13 @@
 CC=gcc
 CFLAGS=-gdwarf-2 -g
+OBJS=file-io.o load_i2.o
 
-file-io.o : file-io.h file-io.c
-	echo "Making file-io..."
-	$(CC) $(CFLAGS) -c file-io.c -lz -o file-io.o
+all: main
+
+main: $(OBJS)
+	@echo Building main...
+	$(CC) $(CFLAGS) test_main.c -o main -lz $(OBJS)
+	@echo Done.
+
+file-io.o: file-io.h file-io.c
+load_i2.o: load_i2.h load_i2.c

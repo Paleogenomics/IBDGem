@@ -7,7 +7,7 @@
 int main(int argc, char* argv[]) {
 
     Impute2* data = init_I2(argv[1], argv[2], argv[3]);
-    int **haps = data->haps;
+    unsigned short** haps = data->haps;
     printf("Num sites: %zu\n", data->num_sites);
     printf("Num haps: %zu\n\n", data->num_haps);
 

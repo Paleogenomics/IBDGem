@@ -5,7 +5,7 @@
 static void read_hap(File_Src* hf, Impute2* i2) {
     
     /* initialize array of int pointers */
-    int** haps = NULL;
+    unsigned short** haps = NULL;
     
     /* initialize number of elements (i.e. haplotypes) in each int array */
     int n_haps;
@@ -21,31 +21,47 @@ static void read_hap(File_Src* hf, Impute2* i2) {
         /* extend array as needed */
         if (curr == n) {
             n += STEPSIZE;
-            int** new = realloc(haps, n * sizeof(int*));
-            if (!new) {
+            unsigned short** tmp = realloc(haps, n * sizeof(unsigned short*));
+            if (!tmp) {
                 fprintf(stderr, "Can't realloc.\n");
                 exit(1);
             }
-            haps = new;
+            haps = tmp;
         }
         int line_len = strlen(line);
 
         /* number of haplotypes = half of actual line length */
         n_haps = line_len/2;
         
-        int* allele_arr = malloc(n_haps * sizeof(int));
+        unsigned short* allele_arr = malloc(n_haps * sizeof(unsigned short));
 
-        /* skips white space - increase index by 2 */
+        /* skip white space - increase index by 2 */
         for (int i = 0; i < line_len; i += 2) {
-            /* char - '0' => char value in int */
-            int allele = line[i] - '0';
-            allele_arr[i/2] = allele;
+            char allele = line[i];
+            switch(allele) {
+                case '0':
+                    allele_arr[i/2] = (unsigned short)0;
+                    break;
+                case '1':
+                    allele_arr[i/2] = (unsigned short)1;
+                    break;
+                case '2':
+                    allele_arr[i/2] = (unsigned short)2;
+                    break;
+                case '3':
+                    allele_arr[i/2] = (unsigned short)3;
+                    break;
+                case '4':
+                    allele_arr[i/2] = (unsigned short)4;
+                    break;
+                default:
+                    fprintf(stderr, "Invalid allele (must be 0-4).\n");
+                    exit(1);
+            }
         }
         haps[curr] = allele_arr;
         curr++;
     }
-    /* set termination flag = NULL */
-    haps[curr] = NULL;
     i2->haps = haps;
     i2->num_sites = curr;
     i2->num_haps = n_haps;
@@ -61,10 +77,10 @@ static void read_legend(File_Src* lf, Impute2* i2) {
     int n_cols = 4;
 
     /* allocate space for each field/column */
-    char** ids = malloc((n+1) * sizeof(char*));
-    char** pos = malloc((n+1) * sizeof(char*));
-    char** ref_alleles = malloc((n+1) * sizeof(char*));
-    char** alt_alleles = malloc((n+1) * sizeof(char*));
+    char** ids = malloc(n * sizeof(char*));
+    char** pos = malloc(n * sizeof(char*));
+    char** ref_alleles = malloc(n * sizeof(char*));
+    char** alt_alleles = malloc(n * sizeof(char*));
 
     char*** all_cols[4] = {&ids, &pos, &ref_alleles, &alt_alleles};
     
@@ -92,18 +108,13 @@ static void read_legend(File_Src* lf, Impute2* i2) {
                 token[strlen(token)-1] = '\0';
             } 
             int tlen = strlen(token);
-            (*all_cols[j])[i] = malloc((tlen+1) * sizeof(char));
-            strcpy((*all_cols[j])[i], token);
+            char* str = malloc((tlen+1) * sizeof(char));
+            strcpy(str, token);
+            (*all_cols[j])[i] = str;
             token = strtok(NULL,  " ");
         }
         i++;
     }
-    /* set termination flag = NULL */
-    ids[i] = NULL;
-    pos[i] = NULL;
-    ref_alleles[i] = NULL;
-    alt_alleles[i] = NULL;
-
     i2->ids = ids;
     i2->pos = pos;
     i2->ref_alleles = ref_alleles;
@@ -113,11 +124,11 @@ static void read_legend(File_Src* lf, Impute2* i2) {
 /* Private function for parsing .indv file */
 static void read_indv(File_Src* inf, Impute2* i2) {
     
-    /* obtain number of variants */
-    int n = i2->num_sites;
+    /* obtain number of samples*/
+    int n = (i2->num_haps)/2;
 
     /* allocate space for array */
-    char** samples = malloc((n+1) * sizeof(char*));
+    char** samples = malloc(n * sizeof(char*));
 
     /* current array index */
     int i = 0;
@@ -136,29 +147,27 @@ static void read_indv(File_Src* inf, Impute2* i2) {
         samples[i] = str;
         i++;
     }
-    /* set termination flag = NULL */
-    samples[i] = NULL;
     i2->samples = samples;
 }
 
 /* Private function for freeing memory allocated for array of char pointers */
-static int free_cptrarr(char** ptrarr) {
+static int free_cptrarr(char** ptrarr, int n) {
     if (!ptrarr) {
         return 0;
     }
-    for (int i = 0; ptrarr[i]; i++) {
+    for (int i = 0; i < n; i++) {
         free(ptrarr[i]);
     }
     free(ptrarr);
     return 0;
 }
 
-/* Private function for freeing memory allocated for array of int pointers */
-static int free_iptrarr(int** ptrarr) {
+/* Private function for freeing memory allocated for array of ushort pointers */
+static int free_iptrarr(unsigned short** ptrarr, int n) {
     if (!ptrarr) {
         return 0;
     }
-    for (int i = 0; ptrarr[i]; i++) {
+    for (int i = 0; i < n; i++) {
         free(ptrarr[i]);
     }
     free(ptrarr);
@@ -188,13 +197,14 @@ int destroy_I2(Impute2* i2) {
     if (!i2) {
         return 0;
     }
-
-    free_iptrarr(i2->haps);
-    free_cptrarr(i2->samples);
-    free_cptrarr(i2->ids);
-    free_cptrarr(i2->pos);
-    free_cptrarr(i2->ref_alleles);
-    free_cptrarr(i2->alt_alleles);
+    int nsites = i2->num_sites;
+    int nsmpls = (i2->num_haps)/2;
+    free_iptrarr(i2->haps, nsites);
+    free_cptrarr(i2->samples, nsmpls);
+    free_cptrarr(i2->ids, nsites);
+    free_cptrarr(i2->pos, nsites);
+    free_cptrarr(i2->ref_alleles, nsites);
+    free_cptrarr(i2->alt_alleles, nsites);
 
     free(i2);
     return 0;
