@@ -6,7 +6,7 @@ all: main
 
 main: $(OBJS)
 	@echo Building main...
-	$(CC) $(CFLAGS) test_main.c -o main -lz $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) -lz test_main.c -o main
 	@echo Done.
 
 file-io.o: file-io.h file-io.c
