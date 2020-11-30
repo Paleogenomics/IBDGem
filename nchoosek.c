@@ -1,5 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include "nchoosek.h"
 
 unsigned long choose(unsigned int n, unsigned int k) {
     if (k == 0) {
@@ -22,7 +21,7 @@ unsigned long** init_nCk(unsigned int n) {
 
 unsigned long retrieve_nCk(unsigned long** nCk, unsigned int n, unsigned int k) {
     if (k > n) {
-        fprintf(stderr, "Invalid k = %u; enter k so that k <= n\n", k);
+        fprintf(stderr, "Invalid k = %u; enter k so that n>=k>=0\n", k);
     }
     return *(nCk[n]+k);
 }
@@ -35,12 +34,5 @@ int destroy_nCk(unsigned long** nCk, unsigned int n) {
         free(nCk[i]);
     }
     free(nCk);
-    return 0;
-}
-
-int main() {
-    unsigned long** nCk = init_nCk(20);
-    printf("Result for 20 choose 7 is: %lu\n", retrieve_nCk(nCk, 20,7));
-    destroy_nCk(nCk, 20);
     return 0;
 }
