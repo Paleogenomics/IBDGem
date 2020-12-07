@@ -1,5 +1,6 @@
 #include <math.h>
-#include <unistd.h> 
+#include <unistd.h>
+#include <time.h>
 #include "file-io.h"
 #include "load_i2.h"
 #include "pileup.h"
@@ -7,119 +8,37 @@
 
 #define EPSILON 0.02
 #define BASES "ACGT"
+unsigned int USER_MAX_DEPTH = 20;
 
 unsigned long** N_CHOOSE_K;
-double MEAN_DEPTH;
 
-typedef struct compare {
-    unsigned int* pos;
-    char** ref;
-    char** alt;
-    char** rsID;
-    double* af;
-    unsigned int* dp;
-    unsigned short* hap1_allele;
-    unsigned short* hap2_allele;
-    unsigned int* ref_counts;
-    unsigned int* alt_counts;
-    double* IBD0;
-    double* IBD1;
-    double* IBD2;
-    size_t nsites_included;
-} Compare;
-
-int destroy_Compare(Compare* comp) {
-    size_t n = comp->nsites_included;
-    if (!comp) {
-        return 0;
-    }
-    free_cptrarr(comp->ref, n);
-    free_cptrarr(comp->alt, n);
-    free_cptrarr(comp->rsID, n);
-    free(comp->af);
-    free(comp->dp);
-    free(comp->hap1_allele);
-    free(comp->hap2_allele);
-    free(comp->ref_counts);
-    free(comp->alt_counts);
-    free(comp->IBD0);
-    free(comp->IBD1);
-    free(comp->IBD2);
-    return 0;
-}
-
-void populate_info(Compare* comp, Impute2* i2, Pu_chr* puc, size_t sample_idx, bool opt_v) {
-    size_t n = i2->num_sites;
-    comp->pos = malloc(n * sizeof(unsigned int));
-    comp->ref = malloc(n * sizeof(char*));
-    comp->alt = malloc(n * sizeof(char*));
-    comp->rsID = malloc(n * sizeof(char*));
-    comp->af = malloc(n * sizeof(double));
-    comp->dp = malloc(n * sizeof(unsigned int));
-    comp->hap1_allele = malloc(n * sizeof(unsigned short));
-    comp->hap2_allele = malloc(n * sizeof(unsigned short));
-    comp->ref_counts = malloc(n * sizeof(unsigned int));
-    comp->alt_counts = malloc(n * sizeof(unsigned int));
-
+size_t count_allele_from_pul(Pul* pul, const char allele) {
     size_t count = 0;
-    for (int i = 0; i < n; i++) {
-        char* ref = i2->ref_alleles[i];
-        char* alt = i2->alt_alleles[i];
-        unsigned short A0 = *(i2->haps[i]+sample_idx);
-        unsigned short A1 = *(i2->haps[i]+(sample_idx+1));
-        if (opt_v && A0 == 0 && A1 == 0) {
-           continue;
-        }
-        else if (biallelic(ref, alt)) {
-            unsigned int pos = atoi(i2->pos[i]);
-            comp->pos[i] = pos;
-            comp->ref[i] = ref;
-            comp->alt[i] = alt;
-            comp->rsID[i] = i2->ids[i];
-            comp->af[i] = find_f(i2, i);
-            Pul* pul = fetch_Pul(puc, pos);
-            comp->dp[i] = pul->cov;
-            comp->hap1_allele[i] = A0; 
-            comp->hap2_allele[i] = A1;
-            comp->ref_counts[i] = count_allele_from_pul(pul, ref);
-            comp->alt_counts[i] = count_allele_from_pul(pul, alt);
+    for (int i = 0; i < pul->cov; i++) {
+        if (pul->bases[i] == allele) {
             count++;
         }
     }
-    comp->nsites_included = count;
+    return count;
 }
 
-void populate_likelihoods(Compare* comp) {
-    for (int i = 0; i < comp->nsites_included; i++) {
-        unsigned int nREF = comp->ref_counts[i];
-        unsigned int nALT = comp->alt_counts[i];
-        unsigned short A0 = comp->hap1_allele[i];
-        unsigned short A1 = comp->hap2_allele[i];
-        double f = comp->af[i];
-
-        comp->IBD0[i] = find_LD_given_f(nREF, nALT, f);
-        comp->IBD1[i] = find_LD_IBD1(A0, A1, nREF, nALT, f);
-        comp->IBD2[i] = find_LD_given_G(A0, A1, nREF, nALT);
-    }
-}
-
-void output_depth_dist(Compare* comp, unsigned int max_depth) {
-    unsigned long total_cov = 0;
-    unsigned int cov_dist[max_depth+1] = {0};
-    for (int i = 0; i < comp->nsites_included; i++) {
-        unsigned int cov = comp->ref_counts[i] + comp->alt_counts[i];
-        if (cov <= max_depth) {
-            cov_dist[cov]++;
+double find_cull_p(Pu_chr* puc, unsigned int target_depth) {
+    unsigned int total_cov = 0;
+    unsigned int total_sites = 0;
+    for (int i = 0; i < puc->n_puls; i++) {
+        unsigned int cov = puc->puls[i]->cov;
+        if (cov <= USER_MAX_DEPTH) {
+            total_cov += cov;
+            total_sites += 1;
         }
     }
-    //printf( "# COVERAGE NUM_SITES\n" );
-    for (int j = 0; j <= max_depth; j++) {
-        //printf( "# %d %d\n", $i, $cov_dist[$i] );
-        total_cov += (cov_dist[j] * j);
+    double mean_depth = (double)total_cov / puc->n_puls;
+    if (target_depth > mean_depth) {
+        fprintf(stderr, "Observed depth is lower than target depth -D. No culling will be done.\n");
+        return 1;
     }
-    MEAN_DEPTH = total_cov / (double)comp->nsites_included;
+    return target_depth / mean_depth;
 }
-
 
 bool biallelic(const char* ref, const char* alt) {
     if ((strstr(BASES, ref) && strlen(ref) == 1) && 
@@ -128,31 +47,6 @@ bool biallelic(const char* ref, const char* alt) {
     }
     return false;
 }
-
-int cull_depth(Compare* comp, double target_depth) {
-    if (target_depth > MEAN_DEPTH) {
-        fprintf(stderr, "Current mean depth of coverage is lower than -D. No culling will be done.\n");
-        return 1;
-    }
-    unsigned int new_ref_count = 0;
-    unsigned int new_alt_count = 0;
-    double cull_p = target_depth / MEAN_DEPTH;
-    for (int i = 0; i < comp->nsites_included; i++) {
-        for (int j = 0; j < comp->ref_counts[i]; j++) {
-            if(rand() / (double)RAND_MAX < cull_p) {
-                new_ref_count++;
-            }
-        }
-        comp->ref_counts[i] = new_ref_count;
-        for (int j = 0; j < comp->alt_counts[i]; j++) {
-            if(rand() / (double)RAND_MAX < cull_p) {
-                new_alt_count++;
-            }
-        }
-        comp->alt_counts[i] = new_alt_count;
-    }
-    return 0;
-} 
 
 unsigned int find_sample_idx(Impute2* i2, const char* identifier) {
     for (unsigned int i = 0; i < (i2->num_haps)/2; i++) {
@@ -172,25 +66,28 @@ double find_f(Impute2* i2, size_t pos_index) {
             nALT++;
         }
     }
-    return nALT / i2->num_haps;
+    return (double)nALT / i2->num_haps;
 }
 
-size_t count_allele_from_pul(Pul* pul, const char* allele) {
-    size_t count = 0;
-    for (int i; i < pul->cov; i++) {
-        if (pul->bases[i] == allele) {
-            count++;
+unsigned int cull_depth(unsigned int original_count, double cull_p) {
+    if (cull_p == 1.0) {
+        return original_count;
+    }
+    unsigned int new_count = 0;
+    for (int i = 0; i < original_count; i++) {
+        if ((rand() / (double)RAND_MAX) < cull_p) {
+            new_count++;
         }
     }
-    return count;
+    return new_count;
 }
 
 double find_LD_given_G(unsigned short A0, unsigned short A1, size_t nREF, size_t nALT) {
-    double L = 1;
+    double L = 1; 
     if (nREF == 0 && nALT == 0) {
         return 1;
     }
-    unsigned long N_choose_k = retrieve(N_CHOOSE_K, nREF+nALT, nREF);
+    unsigned long N_choose_k = retrieve_nCk(N_CHOOSE_K, nREF+nALT, nREF);
     if (A0 == 0 && A1 == 0) {
         L = N_choose_k * pow(1-EPSILON, nREF) * pow(EPSILON, nALT);
     }
@@ -234,39 +131,39 @@ double find_LD_IBD1(unsigned short A0, unsigned short A1, size_t nREF, size_t nA
 }
 
 int main(int argc, char* argv[]) {
+    srand(time(NULL));
     int option;
     char* opts = ":H:L:I:P:S:M:D:v";
-    bool opt_v = false;
-    bool opt_D = false;
-    char* hap_fn, legend_fn, indv_fn, pu_fn, sample_id;
-    unsigned int max_depth = 0;
+    int opt_v = 0;
+    int opt_D = 0;
+    char* hap_fn, *legend_fn, *indv_fn, *pu_fn, *sample_id = NULL;
     unsigned int target_cull_depth = 0;
     while ((option = getopt(argc, argv, opts)) != -1) {
         switch (option) {
             case 'H':
-                hap_fn = optarg;
+                hap_fn = strdup(optarg);
                 break;
             case 'L':
-                legend_fn = optarg;
+                legend_fn = strdup(optarg);
                 break;
             case 'I':
-                indv_fn = optarg;
+                indv_fn = strdup(optarg);
                 break;
             case 'P':
-                pu_fn = optarg;
+                pu_fn = strdup(optarg);
                 break;
             case 'S':
-                sample_id = optarg;
+                sample_id = strdup(optarg);
                 break;
             case 'M':
-                max_depth = atoi(optarg);
+                USER_MAX_DEPTH = atoi(optarg);
                 break;
             case 'D':
                 target_cull_depth = atoi(optarg);
-                opt_D = true;
+                opt_D = 1;
                 break;
             case 'v':
-                opt_v = true;
+                opt_v = 1;
                 break;
             case ':':
                 fprintf(stderr, "Please enter required argument for option -%c.\n", optopt);
@@ -278,20 +175,35 @@ int main(int argc, char* argv[]) {
                 else {
                     fprintf (stderr, "Unknown option character \\x%x.\n", optopt);
                 }
-                exit(0);
+                break;
             default:
                 fprintf(stderr, "Error parsing command-line options.\n");
                 exit(0);
         }
-        for (int i = optind; i < argc; i++) {
-            printf("Non-option argument %s\n", argv[i]);
-        }
     }
-    if (strlen(sample_id) == 0) {
+    for (int i = optind; i < argc; i++) {
+            printf("Non-option argument %s\n", argv[i]);
+    }
+    if (!hap_fn || !legend_fn || !indv_fn) {
+        fprintf(stderr, "compare-vcf2bam.pl Find 0, 1, or 2 IBD segments between\n" );
+	    fprintf(stderr, "IMPUTE2 genotype files and BAM file info.\n" );
+	    fprintf(stderr, "-H <HAP file>\n");
+        fprintf(stderr, "-L <LEGEND file>\n");
+        fprintf(stderr, "-I <IDNV file>\n");
+	    fprintf(stderr, "-P <MPILEUP file>\n" );
+	    fprintf(stderr, "-D <downsample to this fold-coverage depth>\n");
+	    fprintf(stderr, "-S <identifier of sample if there are multiple samples in the INDV file>\n");
+	    fprintf(stderr, "-v <if set, make output only for sites that have >=1 variant\n");
+	    fprintf(stderr, "    allele in genotype file for this sample>\n");
+	    fprintf(stderr, "Format of output table is tab-delimited with columns:\n");
+	    fprintf(stderr, "Position, REF_ALLELE, ALT_ALLELE, rsID, AF, DP, VCFA0, VCFA1, BAMnREF, BAMnALT, P(IBD0), P(IBD1), P(IBD2)\n");
+        exit(0);
+    }
+    if (!sample_id) {
         fprintf(stderr, "Please specify sample ID via the -S option.\n");
         exit(0);
     }
-    if (max_depth == 0) {
+    if (USER_MAX_DEPTH == 0) {
         fprintf(stderr, "Please specify maximum depth of coverage via the -M option.\n");
         exit(0);
     }
@@ -299,23 +211,53 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Please specify culling depth via the -D option.\n");
         exit(0);
     }
+    printf("# Pos\tREF\tALT\trsID\tAF\tDP\tVCFA0\tVCFA1\tBAMnREF\tBAMnALT\tL(IBD0)\tL(IBD1)\tL(IBD2)\n");
     Impute2* i2 = init_I2(hap_fn, legend_fn, indv_fn);
     Pu_chr* puc = init_Pu_chr(pu_fn);
-    Compare* comp = malloc(sizeof(Compare));
-    N_CHOOSE_K = init_nCk(max_depth);
+    N_CHOOSE_K = init_nCk(USER_MAX_DEPTH);
+    double cull_p = 1.0;
     unsigned int sample_idx = find_sample_idx(i2, sample_id);
-    populate_info(comp, i2, puc, sample_id, opt_v);
-    output_depth_dist(comp, max_depth);
     if (opt_D && target_cull_depth > 0) {
-        cull_depth(comp, target_cull_depth);
-        output_depth_dist(comp, max_depth);
+        cull_p = find_cull_p(puc, target_cull_depth);
     }
-    populate_likelihoods(comp);
-    //call function for writing results to file
-    destroy_Compare(comp);
+    for (int i = 0; i < i2->num_sites; i++) {
+        char* ref = i2->ref_alleles[i];
+        char* alt = i2->alt_alleles[i];
+        unsigned short A0 = *(i2->haps[i]+sample_idx);
+        unsigned short A1 = *(i2->haps[i]+(sample_idx+1));
+        if (opt_v && A0 == 0 && A1 == 0) {
+           continue;
+        }
+        else if (biallelic(ref, alt)) {
+            unsigned int pos = atoi(i2->pos[i]);
+            char* rsID = i2->ids[i];
+            double f = find_f(i2, i);
+            Pul* pul = fetch_Pul(puc, pos);
+            if (pul) {
+                unsigned int dp = pul->cov;
+                unsigned int nREF = count_allele_from_pul(pul, ref[0]);
+                unsigned int nALT = count_allele_from_pul(pul, alt[0]);
+                if (nREF + nALT > USER_MAX_DEPTH || nREF > USER_MAX_DEPTH || nALT > USER_MAX_DEPTH) {
+                    continue;
+                }
+                nREF = cull_depth(nREF, cull_p);
+                nALT = cull_depth(nALT, cull_p);
+                double IBD0 = find_LD_given_f(nREF, nALT, f);
+                double IBD1 = find_LD_IBD1(A0, A1, nREF, nALT, f);
+                double IBD2 = find_LD_given_G(A0, A1, nREF, nALT);
+                printf("%u\t%s\t%s\t%s\t%lf\t%u\t%u\t%u\t%u\t%u\t%lf\t%lf\t%lf\n",
+                    pos, ref, alt, rsID, f, dp, A0, A1, nREF, nALT, IBD0, IBD1, IBD2);
+            }
+        }
+    }
+    free(hap_fn);
+    free(legend_fn);
+    free(indv_fn);
+    free(pu_fn);
+    free(sample_id);
     destroy_I2(i2);
-    destroy_nCk(N_CHOOSE_K, max_depth);
-    //destroy Pu_chr
+    destroy_nCk(N_CHOOSE_K, USER_MAX_DEPTH);
+    destroy_Pu_chr(puc);
     return 0;
 }
 

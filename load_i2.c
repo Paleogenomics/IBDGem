@@ -55,7 +55,7 @@ static void read_hap(File_Src* hf, Impute2* i2) {
                     allele_arr[i/2] = (unsigned short)4;
                     break;
                 default:
-                    fprintf(stderr, "Invalid allele (must be 0-4).\n");
+                    fprintf(stderr, "Invalid allele (must be 0-4)\n");
                     exit(1);
             }
         }
@@ -103,6 +103,11 @@ static void read_legend(File_Src* lf, Impute2* i2) {
 
         char* token = strtok(buf, " ");
         for (int j = 0; j < n_cols; j++) {
+            /* make sure the legend file contains all 4 fields */
+            if (!token) {
+            fprintf(stderr, "Error parsing .legend, check if input file has at least 4 columns (ID, pos, allele0, allele1)\n");
+            exit(1);
+            }
             /* trim off new line char in the last column */
             if (j == (n_cols-1)) {
                 token[strlen(token)-1] = '\0';
@@ -124,7 +129,7 @@ static void read_legend(File_Src* lf, Impute2* i2) {
 /* Private function for parsing .indv file */
 static void read_indv(File_Src* inf, Impute2* i2) {
     
-    /* obtain number of samples*/
+    /* obtain number of samples */
     int n = (i2->num_haps)/2;
 
     /* allocate space for array */

@@ -51,5 +51,5 @@ int base_inx_from_pul( PulP pp,
 Pul* fetch_Pul( const Pu_chr* puc, const size_t pos );
 static int cmp_Pul( const void *pul1, const void *pul2 );
 Pu_chr* init_Pu_chr( const char* fn );
-
+int destroy_Pu_chr(Pu_chr* puc);
 #endif /* PILEUP_H */

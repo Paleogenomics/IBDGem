@@ -2,6 +2,7 @@
 #define __NCHOOSEK__
 
 #include <stdio.h>
+#include <stdlib.h>
 
 /* Module for populating a 2D array of binomial coefficients, or n-choose-k values, given a positive integer n
 for every value k such that n>=k>=0. */

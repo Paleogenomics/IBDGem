@@ -466,6 +466,7 @@ static int cmp_Pul( const void *pul1, const void *pul2 ) {
   if ( pos1 == pos2 ) {
     return 0;
   }
+  return 2;
 }
 
 Pu_chr* init_Pu_chr( const char* fn ) {
@@ -483,7 +484,6 @@ Pu_chr* init_Pu_chr( const char* fn ) {
   }
   destroy_FS( pu_file );
   n = i;
-  
   puc = (Pu_chr*)malloc(sizeof(Pu_chr));
   if ( puc == NULL ) {
     return NULL;
@@ -530,8 +530,16 @@ Pu_chr* init_Pu_chr( const char* fn ) {
       return NULL;
     }
   }
-
   destroy_FS( pu_file );
-
   return puc;
+}
+
+int destroy_Pu_chr(Pu_chr* puc) {
+  if (!puc) {
+    return 0;
+  }
+  free(puc->pul_arr);
+  free(puc->puls);
+  free(puc);
+  return 0;
 }
