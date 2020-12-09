@@ -132,8 +132,8 @@ sub output_table {
 					$pos2data_p->{$pos}->[9],
 					($pos2data_p->{$pos}->[3])/2 );
 	}
-	elsif ( ($pos2data_p->{$pos}->[6] == 0) &&
-		($pos2data_p->{$pos}->[7] == 1) ) {
+	elsif ( ($pos2data_p->{$pos}->[6] == 0) && ($pos2data_p->{$pos}->[7] == 1) || 
+		($pos2data_p->{$pos}->[6] == 1) && ($pos2data_p->{$pos}->[7] == 0) ) {
 	    # Site is heterozygous; probability of seeing an ALT
 	    # allele is composite of whether drawn allele is one
 	    # REF or ALT chromosome under model IBD1
