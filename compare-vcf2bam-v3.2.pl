@@ -43,10 +43,13 @@ my $mean_depth;
 my ($pos2data_p, $chr) = &RArsAFA0A1_VCF( $vcf_o );
 &add_bam( $pos2data_p, $chr );
 $mean_depth = &output_depth_dist( $pos2data_p );
+printf( "# Initial mean depth = %.6f\n", $mean_depth);
 if ( defined( $opt_D ) ) {
     &cull_depth( $pos2data_p, $mean_depth, $opt_D );
     printf( "# Depth after culling to %.2f\n", $opt_D );
     $mean_depth = &output_depth_dist( $pos2data_p );
+    printf( "# Final mean depth = %.6f\n", $mean_depth);
+
 }
 &output_table( $pos2data_p );
 
@@ -132,8 +135,8 @@ sub output_table {
 					$pos2data_p->{$pos}->[9],
 					($pos2data_p->{$pos}->[3])/2 );
 	}
-	elsif ( ($pos2data_p->{$pos}->[6] == 0) && ($pos2data_p->{$pos}->[7] == 1) || 
-		($pos2data_p->{$pos}->[6] == 1) && ($pos2data_p->{$pos}->[7] == 0) ) {
+	elsif ( ($pos2data_p->{$pos}->[6] == 0) &&
+		($pos2data_p->{$pos}->[7] == 1) ) {
 	    # Site is heterozygous; probability of seeing an ALT
 	    # allele is composite of whether drawn allele is one
 	    # REF or ALT chromosome under model IBD1
@@ -195,7 +198,7 @@ sub cull_depth {
     else {
 	$cull_p = $target_depth / $mean_depth;
     }
-
+    printf( "# Cull depth ratio = %.6f\n", $cull_p);
     foreach $pos ( keys %{ $p2d_p } ) {
 	# Cull the REF alleles
 	$new_ref_count = 0;
@@ -274,6 +277,7 @@ sub find_pDgivenG {
 	}
 	return $pD;
     }
+    # should have something here
 }
 
 sub add_bam {
@@ -480,7 +484,7 @@ sub init {
     # the vcf file we'll use for comparison
     if ( defined( $opt_I ) ) { # user gave a sample ID. Check that it's present
 	map { if ($opt_I eq $_) {return $vcf_o;} } $vcf_o->get_samples();
-	print STDERR ( "$opt_I not found in VCF file: $opt_V\n" );
+	print STDERR ( "$opt_I not found in VCF file: $opt_V\" );
 	exit( 0 );
     }
 
