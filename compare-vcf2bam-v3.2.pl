@@ -135,8 +135,12 @@ sub output_table {
 					$pos2data_p->{$pos}->[9],
 					($pos2data_p->{$pos}->[3])/2 );
 	}
-	elsif ( ($pos2data_p->{$pos}->[6] == 0) &&
-		($pos2data_p->{$pos}->[7] == 1) ) {
+	elsif ( (($pos2data_p->{$pos}->[6] == 0) &&
+		 ($pos2data_p->{$pos}->[7] == 1))
+		||
+		(($pos2data_p->{$pos}->[6] == 1) &&
+		 ($pos2data_p->{$pos}->[7] == 0)) ) {
+
 	    # Site is heterozygous; probability of seeing an ALT
 	    # allele is composite of whether drawn allele is one
 	    # REF or ALT chromosome under model IBD1
@@ -277,7 +281,7 @@ sub find_pDgivenG {
 	}
 	return $pD;
     }
-    # should have something here
+    return $pD
 }
 
 sub add_bam {
@@ -484,7 +488,7 @@ sub init {
     # the vcf file we'll use for comparison
     if ( defined( $opt_I ) ) { # user gave a sample ID. Check that it's present
 	map { if ($opt_I eq $_) {return $vcf_o;} } $vcf_o->get_samples();
-	print STDERR ( "$opt_I not found in VCF file: $opt_V\" );
+	print STDERR ( "$opt_I not found in VCF file: $opt_V\n" );
 	exit( 0 );
     }
 
