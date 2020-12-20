@@ -1,6 +1,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <time.h>
+#include <float.h>
 #include "file-io.h"
 #include "load_i2.h"
 #include "pileup.h"
@@ -83,7 +84,7 @@ double find_f(Impute2* i2, size_t pos_index) {
         if (*(allele_arr+i) == 1) {
             nALT++;
         }
-    }
+    } 
     return (double)nALT / i2->num_haps;
 }
 
@@ -259,12 +260,12 @@ int main(int argc, char* argv[]) {
                 unsigned int nREF = count_allele_from_pul(pul, ref[0]);
                 unsigned int nALT = count_allele_from_pul(pul, alt[0]);
                 if (nREF + nALT < USER_MAX_DEPTH ) {
-	    	    nREF = cull_depth(nREF, cull_p);
+	    	        nREF = cull_depth(nREF, cull_p);
                     nALT = cull_depth(nALT, cull_p);
                     double IBD0 = find_LD_given_f(nREF, nALT, f);
                     double IBD1 = find_LD_IBD1(A0, A1, nREF, nALT, f);
                     double IBD2 = find_LD_given_G(A0, A1, nREF, nALT);
-                    printf("%u\t%s\t%s\t%s\t%lf\t%u\t%u\t%u\t%u\t%u\t%lf\t%lf\t%lf\n",
+                    printf("%u\t%s\t%s\t%s\t%lf\t%u\t%u\t%u\t%u\t%u\t%e\t%e\t%e\n",
                         pos, ref, alt, rsID, f, dp, A0, A1, nREF, nALT, IBD0, IBD1, IBD2);
                     final_cov_dist[nREF+nALT]++;
 		    final_total_sites++;
