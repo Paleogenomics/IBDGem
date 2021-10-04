@@ -445,7 +445,7 @@ Pul* fetch_Pul( const Pu_chr* puc, const size_t pos ) {
 			 sizeof( Pul* ),
 			 cmp_Pul );
   if ( found_pul_p == NULL ) {
-    return NULL;
+     return NULL;
   }
   return *found_pul_p;
 }
