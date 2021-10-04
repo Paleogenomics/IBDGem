@@ -269,7 +269,7 @@ int main(int argc, char* argv[]) {
             printf("Non-option argument %s\n", argv[i]);
     }
     if (!hap_fn || !legend_fn || !indv_fn) {
-        fprintf(stderr, "compare-vcf2bam.pl Find 0, 1, or 2 IBD segments between\n" );
+        fprintf(stderr, "Find 0, 1, or 2 IBD segments between\n" );
 	    fprintf(stderr, "IMPUTE2 genotype files and BAM file info.\n" );
 	    fprintf(stderr, "-H <HAP file>\n");
         fprintf(stderr, "-L <LEGEND file>\n");
@@ -280,7 +280,7 @@ int main(int argc, char* argv[]) {
 	    fprintf(stderr, "-v <if set, make output only for sites that have >=1 variant\n");
 	    fprintf(stderr, "    allele in genotype file for this sample>\n");
 	    fprintf(stderr, "Format of output table is tab-delimited with columns:\n");
-	    fprintf(stderr, "Position, REF_ALLELE, ALT_ALLELE, rsID, AF, DP, VCFA0, VCFA1, BAMnREF, BAMnALT, P(IBD0), P(IBD1), P(IBD2)\n");
+	    fprintf(stderr, "Position, REF_ALLELE, ALT_ALLELE, rsID, AF, DP, VCFA0, VCFA1, BAMnREF, BAMnALT, L(IBD0), L(IBD1), L(IBD2)\n");
         exit(0);
     }
     if (!sample_id) {
