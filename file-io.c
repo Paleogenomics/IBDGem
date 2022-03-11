@@ -85,8 +85,8 @@ FILE* fileOpen( const char* name, char access_mode[] ) {
   FILE* f;
   f = fopen( name, access_mode );
   if ( f == NULL ) {
-    fprintf( stderr, "%s\n", name );
-    perror( "Cannot open file" );
+    fprintf( stderr, "Failed to open %s.\n", name );
+    perror("Error");
     return NULL;
   }
   return f;

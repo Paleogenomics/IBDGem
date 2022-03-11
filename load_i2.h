@@ -6,28 +6,42 @@
 #include <string.h>
 
 #define STEPSIZE 200000
+#define MAX_NAME_LEN 256
+
+
+/*
+Sample_info - structure for storing sample information
+Members include:
+    + name  : name of sample as appear in .indv file 
+    + idx   : index of sample in .indv file
+*/
+typedef struct sample_info {
+    char name[MAX_NAME_LEN+1];
+    unsigned int idx;
+} Sample_info;
+
 
 /*-----------------------------------------------------------------------------------------------
-Impute2 is a structure that stores genotype information parsed from IMPUTE2-formatted files. 
-Its members include:
-    + haps          : stores phased haplotypes (from .hap file)
-    + ids           : stores variant IDs (from .legend file)
-    + pos           : stores variant positions (from .legend file)
-    + ref_alleles   : stores reference alleles (from .legend file)
-    + alt_alleles   : stores alternative alleles (from .legend file)
-    + samples       : stores sample names (from .indv file)
-    + num_sites     : number of variants
-    + num_haps      : number of haplotypes
+Impute2 - structure for storing genotype information parsed from IMPUTE2-formatted files. 
+Members include:
+    + haps     : stores phased haplotypes (from .hap file)
+    + pos      : stores variant positions (from .legend file)
+    + ids      : stores variant rsIDs (from .legend file)
+    + ref      : stores reference alleles (from .legend file)
+    + alt      : stores alternative alleles (from .legend file)
+    + samples  : stores sample names (from .indv file)
+    + n_sites  : number of variants
+    + n_haps   : number of haplotypes
 -----------------------------------------------------------------------------------------------*/
 typedef struct impute2 {
     unsigned short** haps;
+    unsigned long* pos;
     char** ids;
-    char** pos;
-    char** ref_alleles;
-    char** alt_alleles;
-    char** samples;
-    size_t num_sites;
-    size_t num_haps;
+    char** ref;
+    char** alt;
+    Sample_info* samples;
+    size_t n_sites;
+    size_t n_haps;
 } Impute2;
 
 

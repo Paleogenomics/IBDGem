@@ -68,7 +68,6 @@ int best_base_from_pul( PulP pp, unsigned int mqc,
         unsigned int covc, bool weighted ) {
   size_t base_counts[5];
   size_t cov, i, this_base_index;
-  int rand_inx;
   size_t f_counts, s_counts, t_counts, f_inx, s_inx, t_inx;
 
   cov = pp->cov; // position coverage
@@ -435,21 +434,6 @@ int base_inx_from_pul( PulP pp,
   }
 }
 
-Pul* fetch_Pul( const Pu_chr* puc, const size_t pos ) {
-  Pul key;
-  Pul** found_pul_p;
-  key.pos = pos;
-  found_pul_p = bsearch( &key,
-			 puc->puls,
-			 puc->n_puls,
-			 sizeof( Pul* ),
-			 cmp_Pul );
-  if ( found_pul_p == NULL ) {
-     return NULL;
-  }
-  return *found_pul_p;
-}
-
 static int cmp_Pul( const void *pul1, const void *pul2 ) {
   Pul* p1 = (Pul*) pul1; // key
   Pul** pp2 = (Pul**) pul2; // pointer to pointer of Pul
@@ -469,6 +453,21 @@ static int cmp_Pul( const void *pul1, const void *pul2 ) {
   return 2;
 }
 
+Pul* fetch_Pul( const Pu_chr* puc, const size_t pos ) {
+  Pul key;
+  Pul** found_pul_p;
+  key.pos = pos;
+  found_pul_p = bsearch( &key,
+			 puc->puls,
+			 puc->n_puls,
+			 sizeof( Pul* ),
+			 cmp_Pul );
+  if ( found_pul_p == NULL ) {
+     return NULL;
+  }
+  return *found_pul_p;
+}
+
 Pu_chr* init_Pu_chr( const char* fn ) {
   Pu_chr* puc;
   size_t i = 0;
@@ -479,6 +478,9 @@ Pu_chr* init_Pu_chr( const char* fn ) {
 
   /* How many mpileup lines? Count them! */
   pu_file = init_FS( fn );
+  if (!pu_file) {
+    exit(1);
+  }
   while( get_line_FS( pu_file, pu_str ) != NULL ) {
     i++;
   }

@@ -1,11 +1,14 @@
 #include "nchoosek.h"
 
-unsigned long choose(unsigned int n, unsigned int k) {
+
+/* Private function for performing the nCk calculation */
+static unsigned long choose(unsigned int n, unsigned int k) {
     if (k == 0) {
         return 1;
     }
     return (n * choose(n-1, k-1)) / k;
 }
+
 
 unsigned long** init_nCk(unsigned int n) {
     unsigned long** nCk = malloc((n+1) * sizeof(unsigned long*));
@@ -19,12 +22,14 @@ unsigned long** init_nCk(unsigned int n) {
     return nCk;
 }
 
+
 unsigned long retrieve_nCk(unsigned long** nCk, unsigned int n, unsigned int k) {
     if (k > n) {
         fprintf(stderr, "Invalid k = %u; enter k so that n>=k>=0\n", k);
     }
     return *(nCk[n]+k);
 }
+
 
 int destroy_nCk(unsigned long** nCk, unsigned int n) {
     if (!nCk) {
