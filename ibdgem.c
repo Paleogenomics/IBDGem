@@ -649,7 +649,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if ( (OPT_D && target_dp == 0) || (OPT_D && target_dp < 0) ) {
+    if ( OPT_D && target_dp <= 0 ) {
         fprintf( stderr, "Invalid target depth of coverage (must be > 0).\n" );
         destroy_I2(i2);
         destroy_Pu_chr(puc);

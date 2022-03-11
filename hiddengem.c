@@ -11,7 +11,7 @@
 #define P2 2
 #define P3 3
 
-static double IBD0_IBD1_penalty = 0.001; // assuming 0.01 crossover/1Mbp & ~100kbp/1 bin, 4 * 0.01 recom/meiosis * 500kbp
+static double IBD0_IBD1_penalty = 0.001; // assuming 0.01 crossover/1Mbp & ~100kbp/1 bin
 static double IBD0_IBD2_penalty = 0.000001;
 static double IBD1_IBD2_penalty = 0.001;
 
