@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
     Ibd_genome* ig = init_summary(summary_fn);
     int n = ig->n_bins;
     Score** score_tab = init_score_tab(n);    
-    int cflag = calc_score(ig, score_tab);
+    calc_score(ig, score_tab);
       
     long double final_scores[3] = {score_tab[0][n-1].tot_score,
                                    score_tab[1][n-1].tot_score,
@@ -247,32 +247,6 @@ int main(int argc, char* argv[]) {
         int s = ibd_path[i+1];
         ibd_path[i] = score_tab[s][i+1].previous->curr_state;
     }
-    
-    FILE* fpout = fopen(out_fn, "a+");
-
-    int n_sites = 0;
-    int n_ibd0 = 0;
-    int n_ibd1 = 0;
-    int n_ibd2 = 0;
-    for (int i = 0; i < n; i++) {
-        if (ibd_path[i] == 0) {
-            n_ibd0++;
-        }
-        else if (ibd_path[i] == 1) {
-            n_ibd1++;
-        }
-        else if (ibd_path[i] == 2) {
-            n_ibd2++;
-        }
-        n_sites += ig->n_sites[i];
-    }
-
-    double pct_ibd0 = ( (double)n_ibd0/n ) * 100;
-    double pct_ibd1 = ( (double)n_ibd1/n ) * 100;
-    double pct_ibd2 = ( (double)n_ibd2/n ) * 100;
-
-    fprintf(fpout, "%s\t%d\t%d\t%d\t%d\t%d\t%.2f\t%.2f\t%.2f\n", chr, n,
-            n_sites, n_ibd0, n_ibd1, n_ibd2, pct_ibd0, pct_ibd1, pct_ibd2); ***/
 
     printf("Bin\tIBD0_Score\tIBD1_Score\tIBD2_Score\tInferred_State\n");
     // bin counts for each state
@@ -311,7 +285,6 @@ int main(int argc, char* argv[]) {
     free(out_fn);
     free(chr);
     free(ig);
-    fclose(fpout);
     destroy_score_tab(score_tab);
     return 0;
 }
