@@ -519,12 +519,12 @@ void* do_compare(void* args) {
 /* Prints help message */
 void help(int code) {
     fprintf( stderr, "IBDGem: Find 0, 1, or 2 IBD segments between IMPUTE genotype files and BAM file info.\n" );
-	fprintf( stderr, "-H (required) <HAP file>\n");
+    fprintf( stderr, "-H (required) <HAP file>\n");
     fprintf( stderr, "-L (required) <LEGEND file>\n");
     fprintf( stderr, "-I (required) <INDV file>\n");
-	fprintf( stderr, "-P (required) <PILEUP file>\n" );
+    fprintf( stderr, "-P (required) <PILEUP file>\n" );
     fprintf( stderr, "-N (STR)      <name of individual in Pileup (default: PU_ID)>\n" );
-	fprintf( stderr, "-S (FILE)     <file containing subset of samples in panel to\n" );
+    fprintf( stderr, "-S (FILE)     <file containing subset of samples in panel to\n" );
     fprintf( stderr, "               compare the sequencing data against; one line per sample\n" );
     fprintf( stderr, "               (default: compare against all samples in genotype panel)>\n" );
     fprintf( stderr, "-M (INT)      <maximum estimated coverage of Pileup data (default: 20)>\n" );
@@ -532,10 +532,10 @@ void help(int code) {
     fprintf( stderr, "-O (STR)      <path to output directory (default: output to current directory)>\n" );
     fprintf( stderr, "-t (INT)      <number of threads (default: 1)>\n" );
     fprintf( stderr, "-e (FLOAT)    <error rate of sequencing platform used (default: 0.02)>\n" );
-	fprintf( stderr, "-v            <if set, make output only for sites that have >=1\n" );
-	fprintf( stderr, "               alternate alleles in genotype file for this sample>\n" );
-	fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-	fprintf( stderr, "POS, REF, ALT, rsID, AF, DP, VCFA0, VCFA1, BAM_NREF, BAM_NALT, LIBD0, LIBD1, LIBD2\n" );
+    fprintf( stderr, "-v            <if set, make output only for sites that have >=1\n" );
+    fprintf( stderr, "               alternate alleles in genotype file for this sample>\n" );
+    fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
+    fprintf( stderr, "POS, REF, ALT, rsID, AF, DP, VCFA0, VCFA1, BAM_NREF, BAM_NALT, LIBD0, LIBD1, LIBD2\n" );
     exit(code);
 }
 
