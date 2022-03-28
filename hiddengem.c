@@ -21,7 +21,7 @@ static struct option longopts[] = {
     { "chr",     required_argument, 0, 'c' },
     { "out",     required_argument, 0, 'o' },
     { "p01",     required_argument, 0, P1  },
-    { "p02",     required_argument, 0, P2  },
+    { "p02",     required_argument, 0, P2  }, 
     { "p12",     required_argument, 0, P3  },
     { 0, 0, 0, 0}
 };
@@ -220,11 +220,11 @@ int main(int argc, char* argv[]) {
     if (!summary_fn) {
         fprintf( stderr, "HiddenGem: Find most probable path of IBD states across a\n" );
         fprintf( stderr, "genomic region using aggregated likelihoods from IBDGEM.\n" );
-        fprintf( stderr, "Usage: ./hiddengem [--p01 IBD0_IBD1_PENALTY --p02 IBD0_IBD2_PENALTY --p12 IBD1_IBD2_PENALTY] --summary (-s) FILE\n" );
-        fprintf( stderr, "--summary (-s) <file containing aggregated likelihood results from IBDGem>\n" );
-        fprintf( stderr, "--p01 <penalty for changing from state IBD0 to IBD1 and vice versa>\n" );
-        fprintf( stderr, "--p02 <penalty for changing from state IBD0 to IBD2 and vice versa>\n" );
-        fprintf( stderr, "--p12 <penalty for changing from state IBD1 to IBD2 and vice versa>\n" );
+        fprintf( stderr, "Usage: ./hiddengem --summary/-s input_summary [other options...] >output_file\n" );
+        fprintf( stderr, "--summary/-s (required) <file containing aggregated likelihood results from IBDGem>\n" );
+        fprintf( stderr, "--p01                   <penalty for changing between states IBD0 to IBD1 (default: 0.001)>\n" );
+        fprintf( stderr, "--p02                   <penalty for changing between states IBD0 to IBD2 (default: 0.000001)>\n" );
+        fprintf( stderr, "--p12                   <penalty for changing between states IBD1 to IBD2 (default: 0.001)\n" );
         fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
         fprintf( stderr, "Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State\n" );
         exit(0);

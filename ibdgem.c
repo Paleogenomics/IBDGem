@@ -389,7 +389,7 @@ double do_pD_calc(Prob_sum** ptab, Impute2* i2, Pu_chr* puc, double target_dp,
         Pul* pul = fetch_Pul(puc, pos);
         // not found in Pileup? excluded from analysis
         if (!pul) {
-            ptab[i]->failed_filters = 1; 
+            ptab[i]->failed_filters = 1;
             continue;
         }
            
@@ -730,6 +730,6 @@ int main(int argc, char* argv[]) {
 
     end = clock();
     time_elapsed = ( (double)(end-start)  / CLOCKS_PER_SEC ) / 60;
-    fprintf( stderr, "Execution time: %f minutes.\n", time_elapsed );
+    fprintf( stderr, "Run time: %f minutes.\n", time_elapsed );
     return EXIT_SUCCESS;
 }

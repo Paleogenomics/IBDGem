@@ -65,11 +65,12 @@ int main(int argc, char* argv[]) {
 	    fprintf( stderr, "Writes the aggregated likelihoods across bins of the input file\n" );
 	    fprintf( stderr, "These bins can be plotted to see regional trends\n" );
 	    fprintf( stderr, "Input data must be sorted by position\n" );
-        fprintf( stderr, "-c <input comparison table from IBDGem>\n" );  
-	    fprintf( stderr, "-n <optional - number of sites per bin (default: 100)>\n" );
-	    fprintf( stderr, "-L <optional - low coverage cutoff for comparison data (default: 1)>\n" );
-	    fprintf( stderr, "-H <optional - high coverage cutoff for comparison data (default: 5)>\n" );
-        fprintf( stderr, "Output format: POS_START POS_END AGGR_IBD0 AGGR_IBD1 AGGR_IBD2 NUM_SITES\n" );
+        fprintf( stderr, "-c (required) <input comparison table from IBDGem>\n" );  
+	    fprintf( stderr, "-n            <number of sites per bin (default: 100)>\n" );
+	    fprintf( stderr, "-L            <low coverage cutoff for comparison data (default: 1)>\n" );
+	    fprintf( stderr, "-H            <high coverage cutoff for comparison data (default: 5)>\n" );
+        fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
+        fprintf( stderr, "POS_START POS_END AGGR_IBD0 AGGR_IBD1 AGGR_IBD2 NUM_SITES\n" );
         exit(0);
     }
 

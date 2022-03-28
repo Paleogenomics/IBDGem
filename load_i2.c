@@ -190,7 +190,7 @@ static int read_indv(File_Src* inf, Impute2* i2) {
         // trim off new line char
         line[strlen(line)-1] = '\0';
         strcpy(samples[i].name, line);
-        samples[i].idx = i;
+        samples[i].idx = i*2;
         i++;
     }
     if (i == 0) {
