@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -Wall
+CFLAGS=-g -Wall -pthread
 OBJS=file-io.o load_i2.o pileup.o nchoosek.o
 LDFLAGS=-lz -lm
 
