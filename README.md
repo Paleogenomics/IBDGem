@@ -1,37 +1,78 @@
-#### IBDGem
-The program in this repository are used to compare the sequence data
-in an input IMPUTE2-formated file to the data in an input BAM file. They calculate
-the probability of the BAM data given various levels of relatedness to
-an individual whose genotypes are described in the IMPUTE file.
+### IBDGem
+The program and modules in this repository compare genotype information generated from
+deep-sequencing or other means to alignment information from a BAM file. They calculate
+the probability of the BAM data given various levels of relatedness to an individual 
+whose genotypes are described in the IMPUTE files.
 
 ### ibdgem.c
 ```
-Find 0, 1, or 2 IBD segments between IMPUTE2 genotype files and BAM file info.
-It is assumed that input is on a single chromosome.
-This chromosome ID is learned by parsing the genotype file.
--H <HAP file>
--L <LEGEND file>
--I <IDNV file>
--P <MPILEUP file> (converted from BAM)
--D <downsample to this fold-coverage depth>
--S <identifier of sample if there are multiple samples in the INDV file>
--v <if set, make output only for sites that have >=1 variant
-    allele in genotype file for this sample>
+Finds 0, 1, or 2 IBD segments between IMPUTE genotype files and BAM file info.
+
+Usage: ./ibdgem -H hap_file -L legend_file -I indv_file -P pileup_file [other options...]
+-H (required) <HAP file>
+-L (required) <LEGEND file>
+-I (required) <INDV file>
+-P (required) <PILEUP file>
+-N (STR)      <name of individual in Pileup (default: PU_ID)>
+-S (FILE)     <file containing subset of samples in panel to
+               compare the sequencing data against; one line per sample
+-M (INT)      <maximum estimated coverage of Pileup data (default: 20)>
+-D (FLOAT)    <down-sample to this fold-coverage depth>
+-O (STR)      <path to output directory (default: output to current directory)>
+-t (INT)      <number of threads (default: 1)>
+-e (FLOAT)    <error rate of sequencing platform used (default: 0.02)>
+-v            <if set, make output only for sites that have >=1
+               alternate alleles in genotype file for this sample>
+               
 Format of output table is tab-delimited with columns:
-Position, REF_ALLELE, ALT_ALLELE, rsID, AF, DP, VCFA0, VCFA1, BAMnREF, BAMnALT, L(IBD0), L(IBD1), L(IBD2)
+POS, REF, ALT, rsID, AF, DP, VCFA0, VCFA1, BAM_NREF, BAM_NALT, LIBD0, LIBD1, LIBD2
 ```
 
-### summarize-comparison.c.pl
+### aggregate.c
 ```
-Summarizes output of IBDGem
-Writes the aggregate probabilities across bins of the input file.
+"AGGREGATE: Summarizes the output of IBDGem - partitions the genomic region from the input file
+into bins containing a fixed number of SNPs and calculates the aggregated likelihoods for each bin.
 These bins can be plotted to see regional trends.
-Output format is: POS_START POS_END AGGR_IBD0 AGGR_IBD1 AGGR_IBD2 NUM_SITES
--n <number of sites per bin; default = 100>
--q <Genotype Quality cutoff; default = 40>
--l <Low coverage cutoff for reference genotype; default = 5>
--h <High coverage cutoff for reference genotype; default = 12>
--L <Low coverage cutoff for comparison data; default = 1>
--H <High coverage cutoff for comparison data; default = 4>
--c <input comparison table file>
+Input data must be sorted by position.
+
+Usage: ./aggregate -c input_table [other options...] >output_file
+-c (required) <input comparison table from IBDGem>
+-n            <number of sites per bin (default: 100)>
+-L            <low coverage cutoff for comparison data (default: 1)>
+-H            <high coverage cutoff for comparison data (default: 5)>
+Format of output table is tab-delimited with columns:
+POS_START POS_END AGGR_LIBD0 AGGR_LIBD1 AGGR_LIBD2 NUM_SITES
+```
+
+### hiddengem.c
+```
+"HIDDENGEM: Find most probable path of IBD states across a genomic region using aggregated likelihoods from IBDGEM.
+Usage: ./hiddengem --summary/-s input_summary [other options...] >output_file
+
+--summary/-s (required) <file containing aggregated likelihoods from IBDGem>
+--p01                   <penalty for changing between states IBD0 to IBD1 (default: 0.001)>
+--p02                   <penalty for changing between states IBD0 to IBD2 (default: 0.000001)>
+--p12                   <penalty for changing between states IBD1 to IBD2 (default: 0.001)>
+Format of output table is tab-delimited with columns:
+Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
+```
+
+### To compile: 
+In the IBDGem directory, type
+```
+make
+```
+Separate modules can also be compiled individually by typing
+```
+make [module_name]
+```
+For example, to compile hiddengem.c, type
+```
+make hiddengem
+```
+
+### To remove object files and executables:
+In the IBDGem directory, type
+```
+make clean
 ```
