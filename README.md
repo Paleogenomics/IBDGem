@@ -63,6 +63,8 @@ In the IBDGem directory, type
 make
 ```
 Separate modules can also be compiled individually by typing
+<<<<<<< HEAD
+=======
 ```
 make [module_name]
 ```
@@ -75,4 +77,27 @@ make hiddengem
 In the IBDGem directory, type
 ```
 make clean
+>>>>>>> ca887ffe3f60bc217e4f722ed73e2466987bbb81
+```
+make [module_name]
+```
+For example, to compile hiddengem.c, type
+```
+make hiddengem
+```
+
+### To remove object files and executables:
+In the IBDGem directory, type
+```
+make clean
+```
+
+### Auxiliary files:
+#### gt2vcf.py
+```
+gt2vcf.py: Converts tab-delimited genotype file (rsID, chrom, pos, A0, A1) to VCF format.
+Requires tab-delimited info file with the following fields: chrom, pos, ref, alt for each known SNP.
+(See example file in supplementary folder)
+
+Usage: python gt2vcf.py input_genotype input_info sampleID output_filename
 ```
