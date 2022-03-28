@@ -85,8 +85,4 @@ Requires tab-delimited info file with the following fields: chrom, pos, ref, alt
 (See example file in supplementary folder)
 
 Usage: python gt2vcf.py input_genotype input_info sampleID output_filename
-<<<<<<< HEAD
 ```
-=======
-```
->>>>>>> 86089b738ce5353a6241a6cb3d13d46b5a6e10b0
