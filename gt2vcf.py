@@ -7,8 +7,8 @@ import numpy as np
 
 
 def mergeInfo(gt_fn, info_fn):
-    df_gt = pd.read_csv(gt_fn, sep='\t', names=['rsID', 'chrom', 'pos', 'A0', 'A1'], comment='#',
-                        dtype={'rsID': str, 'chrom': str, 'pos': str, 'A0': str, 'A1': str})
+    df_gt = pd.read_csv(gt_fn, sep='\t', names=['rsID', 'chrom', 'pos', 'A0', 'A1'],
+                        comment='#', dtype=str)
     df_info = pd.read_csv(info_fn, sep='\t', comment='#',
                           names=['chrom', 'pos', 'ref', 'alt'], dtype=str)
     df_final = pd.merge(df_gt, df_info[['pos', 'ref', 'alt']], on='pos')
@@ -24,6 +24,8 @@ def formatGT(A0, A1, ref, alt):
         return '0|1'
     elif A0 == alt and A1 == ref:
         return '1|0'
+    else:
+        return '.|.'
     
     
 def convertToVCF(df, sampleID, out_fn):
