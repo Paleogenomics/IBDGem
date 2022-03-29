@@ -5,13 +5,20 @@ import sys
 import pandas as pd
 import numpy as np
 
+# chromosome lengths based on the GRCh37 reference genome
+ctg_len = {'1': 249250621, '2': 243199373, '3': 198022430, '4': 191154276, '5': 180915260,
+           '6': 171115067, '7': 159138663, '8': 146364022, '9': 141213431, '10': 135534747,
+           '11': 135006516, '12': 133851895, '13': 115169878, '14': 107349540, '15': 102531392,
+           '16': 90354753, '17': 81195210, '18': 78077248, '19': 59128983, '20': 63025520,
+           '21': 48129895, '22': 51304566, 'X': 155270560, 'Y': 59373566, 'MT': 16569}
+
 
 def mergeInfo(gt_fn, info_fn):
     df_gt = pd.read_csv(gt_fn, sep='\t', names=['rsID', 'chrom', 'pos', 'A0', 'A1'],
-                        comment='#', dtype=str)
-    df_info = pd.read_csv(info_fn, sep='\t', comment='#',
-                          names=['chrom', 'pos', 'ref', 'alt'], dtype=str)
-    df_final = pd.merge(df_gt, df_info[['pos', 'ref', 'alt']], on='pos')
+                        dtype=str, comment='#')
+    df_info = pd.read_csv(info_fn, sep='\t', names=['chrom', 'pos', 'ref', 'alt'],
+                          dtype=str, comment='#')
+    df_final = pd.merge(df_gt, df_info, on=['chrom', 'pos'])
     return df_final
 
 
@@ -24,16 +31,22 @@ def formatGT(A0, A1, ref, alt):
         return '0|1'
     elif A0 == alt and A1 == ref:
         return '1|0'
-    else:
-        return '.|.'
+    # either indel, multi-allelic, or missing gt
+    return '.|.'
     
-    
+
 def convertToVCF(df, sampleID, out_fn):
-   
+    
     out = open(out_fn, 'w+')
     out.write('##fileformat=VCFv4.1\n')
     out.write('##FILTER=<ID=PASS,Description="All filters passed">\n')
-    out.write('##contig=<ID=1,assembly=b37,length=249250621>\n')
+    ctgs = df['chrom'].unique()
+    for c in ctgs:
+        if c.startswith('chr'):
+            ctg_name = c[3:]
+        else:
+            ctg_name = c
+        out.write('##contig=<ID=%s,assembly=b37,length=%s>\n' % (ctg_name, ctg_len[ctg_name]))
     out.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
     out.write('##INFO=<ID=VT,Number=.,Type=String,Description="indicates what type of variant the line represents">\n')
     out.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{}\n".format(sampleID))
@@ -68,6 +81,7 @@ def main():
     
     df = mergeInfo(gt_fn, info_fn)
     convertToVCF(df, sampleID, out_fn)
+
 
 if __name__ == "__main__":
     main()

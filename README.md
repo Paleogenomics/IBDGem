@@ -67,7 +67,7 @@ Separate modules can also be compiled individually by typing
 ```
 make [module_name]
 ```
-For example, to compile hiddengem.c, type
+For example, to compile ```hiddengem.c```, type
 ```
 make hiddengem
 ```
@@ -81,9 +81,15 @@ make clean
 ### Auxiliary files:
 #### gt2vcf.py
 ```
-gt2vcf.py: Converts tab-delimited genotype file (rsID, chrom, pos, A0, A1) to VCF format.
-Requires tab-delimited info file with the following fields: chrom, pos, ref, alt for each known SNP.
-(See example file in supplementary folder)
+gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allele1, allele2
+(in that order) to VCF format.
+Requires reference info file with fields chrom, pos, ref, alt for each known SNP.
+(See example info file in supplementary folder).
 
 Usage: python gt2vcf.py input_genotype input_info sampleID output_filename
+```
+**Note**: gt2vcf.py uses ```pandas``` and ```numpy```; to install, type
+```
+pip install pandas
+pip install numpy
 ```
