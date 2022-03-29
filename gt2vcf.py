@@ -46,7 +46,7 @@ def convertToVCF(df, sampleID, out_fn):
             ctg_name = c[3:]
         else:
             ctg_name = c
-        out.write('##contig=<ID=%s,assembly=b37,length=%s>\n' % (ctg_name, ctg_len[ctg_name]))
+        out.write('##contig=<ID=%s,assembly=b37,length=%s>\n' % (c, ctg_len[ctg_name]))
     out.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
     out.write('##INFO=<ID=VT,Number=.,Type=String,Description="indicates what type of variant the line represents">\n')
     out.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{}\n".format(sampleID))
