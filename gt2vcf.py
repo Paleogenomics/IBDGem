@@ -7,7 +7,7 @@ import numpy as np
 
 
 def mergeInfo(gt_fn, info_fn):
-    df_gt = pd.read_csv(gt_fn, sep='\t', names=['rsID', 'chrom', 'pos', 'A0', 'A1'],
+    df_gt = pd.read_csv(gt_fn, sep='\t', names=['rsID', 'chrom', 'pos', 'A0', 'A1'], comment='#',
                         dtype={'rsID': str, 'chrom': int, 'pos': str, 'A0': str, 'A1': str})
     df_info = pd.read_csv(info_fn, sep='\t', comment='#',
                           names=['chrom', 'pos', 'ref', 'alt'], dtype=str)

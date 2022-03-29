@@ -16,6 +16,7 @@ Usage: ./ibdgem -H hap_file -L legend_file -I indv_file -P pileup_file [other op
 -N (STR)      <name of individual in Pileup (default: PU_ID)>
 -S (FILE)     <file containing subset of samples in panel to
                compare the sequencing data against; one line per sample
+               (default: compare against all samples in genotype panel)>
 -M (INT)      <maximum estimated coverage of Pileup data (default: 20)>
 -D (FLOAT)    <down-sample to this fold-coverage depth>
 -O (STR)      <path to output directory (default: output to current directory)>

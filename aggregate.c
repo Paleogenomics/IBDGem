@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 	    fprintf( stderr, "-L            <low coverage cutoff for comparison data (default: 1)>\n" );
 	    fprintf( stderr, "-H            <high coverage cutoff for comparison data (default: 5)>\n" );
         fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-        fprintf( stderr, "POS_START POS_END AGGR_IBD0 AGGR_IBD1 AGGR_IBD2 NUM_SITES\n" );
+        fprintf( stderr, "POS_START POS_END AGGR_LIBD0 AGGR_LIBD1 AGGR_LIBD2 NUM_SITES\n" );
         exit(0);
     }
 
