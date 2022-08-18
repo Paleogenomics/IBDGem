@@ -1,12 +1,13 @@
 #ifndef FILEIO_H
 #define FILEIO_H
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
 #include <zlib.h>
 
-#define MAX_LINE_LEN 12288
+#define MAX_LINE_LEN 13312
 #define MAX_FN_LEN 1024
 
 /* File_Src is a structure that holds information about
@@ -42,4 +43,5 @@ File_Src* reset_FS( File_Src* fs );
 int destroy_FS( File_Src* fs );
 
 FILE* fileOpen( const char* name, char access_mode[] );
-#endif
+
+#endif /* FILEIO_H */

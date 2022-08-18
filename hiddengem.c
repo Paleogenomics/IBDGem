@@ -1,6 +1,5 @@
 /***
- * HiddenGem: Module for inferring IBD0, IBD1, and IBD2 segments across a genomic region
- * between 2 samples using aggregated likelihood calculations from IBDGem.
+ * HiddenGem: Module for inferring IBD0, IBD1, and IBD2 segments across a genomic region.
 ***/
 
 #include <getopt.h>
@@ -18,11 +17,10 @@ static double IBD1_IBD2_penalty = 0.001;
 /** Long options table **/
 static struct option longopts[] = {
     { "summary", required_argument, 0, 's' },
-    { "chr",     required_argument, 0, 'c' },
-    { "out",     required_argument, 0, 'o' },
     { "p01",     required_argument, 0, P1  },
     { "p02",     required_argument, 0, P2  }, 
     { "p12",     required_argument, 0, P3  },
+    { "help",    no_argument, 0, 'h' },
     { 0, 0, 0, 0}
 };
 
@@ -167,25 +165,37 @@ int destroy_score_tab(Score** score_tab) {
     return 0;
 }
 
+
+void print_help(int code) {
+    fprintf( stderr, "HIDDENGEM: Finds most probable path of IBD states across genomic bins from IBDGem-derived\n" );
+    fprintf( stderr, "           aggregated likelihoods.\n\n" );
+    fprintf( stderr, "Usage: ./hiddengem -s [summary-file] [other options...] >[out-file]\n" );
+    fprintf( stderr, "--summary, -s  FILE      File containing aggregated likelihood results from IBDGem (required)\n" );
+    fprintf( stderr, "--p01  FLOAT             Penalty for switching between states IBD0 and IBD1 (default: 1e-3)\n" );
+    fprintf( stderr, "--p02  FLOAT             Penalty for switching between states IBD0 and IBD2 (default: 1e-6)\n" );
+    fprintf( stderr, "--p12  FLOAT             Penalty for switching between states IBD1 and IBD2 (default: 1e-3)\n" );
+    fprintf( stderr, "--help                   Show this help message and exit\n\n" );
+    fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
+    fprintf( stderr, "Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State\n" );
+    exit(code);
+}
+
+
 /*** MAIN PROGRAM ***/
 int main(int argc, char* argv[]) {
 
     int option;
-    char* opts = ":s:c:o:";
-    char* summary_fn = NULL;
-    char* out_fn = NULL;
-    char* chr = NULL;
+    char* opts = ":s:h";
+    char summary_fn[MAX_FN_LEN];
+
+    if (argc == 1) {
+        print_help(0);
+    }
 
     while ( (option = getopt_long(argc, argv, opts, longopts, NULL)) != -1 ) {
         switch (option) {
             case 's':
-                summary_fn = strdup(optarg);
-                break;
-            case 'c':
-                chr = strdup(optarg);
-                break;
-            case 'o':
-                out_fn = strdup(optarg);
+                strcpy(summary_fn, optarg);
                 break;
             case P1:
                 IBD0_IBD1_penalty = atof(optarg);
@@ -196,41 +206,34 @@ int main(int argc, char* argv[]) {
             case P3:
                 IBD1_IBD2_penalty = atof(optarg);
                 break;
+            case 'h':
+                print_help(0);
             case ':':
-                fprintf( stderr, "Option missing required argument.\n" );
+                fprintf( stderr, "Option -%c missing required argument.\n", optopt );
                 exit(0);
             case '?':
                 if (isprint(optopt)) {
                     fprintf( stderr, "Invalid option -%c.\n", optopt );
                 }
                 else {
-                    fprintf ( stderr, "Invalid option character '\\x%x'.\n", optopt );
+                    fprintf ( stderr, "Invalid option character.\n" );
                 }
                 break;
             default:
-                fprintf( stderr, "Error parsing command-line options.\n" );
+                fprintf( stderr, "[::] ERROR parsing command-line options.\n" );
                 exit(0);
         }
     }
 
     for (int i = optind; i < argc; i++) {
-            fprintf( stderr, "Non-option argument %s.\n", argv[i] );
-    }
-
-    if (!summary_fn) {
-        fprintf( stderr, "HiddenGem: Find most probable path of IBD states across a\n" );
-        fprintf( stderr, "genomic region using aggregated likelihoods from IBDGEM.\n" );
-        fprintf( stderr, "Usage: ./hiddengem --summary/-s input_summary [other options...] >output_file\n" );
-        fprintf( stderr, "--summary/-s (required) <file containing aggregated likelihood results from IBDGem>\n" );
-        fprintf( stderr, "--p01                   <penalty for changing between states IBD0 to IBD1 (default: 0.001)>\n" );
-        fprintf( stderr, "--p02                   <penalty for changing between states IBD0 to IBD2 (default: 0.000001)>\n" );
-        fprintf( stderr, "--p12                   <penalty for changing between states IBD1 to IBD2 (default: 0.001)\n" );
-        fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-        fprintf( stderr, "Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State\n" );
-        exit(0);
+        fprintf( stderr, "Given extra argument %s.\n", argv[i] );
     }
 
     Ibd_genome* ig = init_summary(summary_fn);
+    if (!ig) {
+        fprintf( stderr, "[::] ERROR parsing likelihood data; make sure input is valid.\n" );
+        exit(1);
+    }
     int n = ig->n_bins;
     Score** score_tab = init_score_tab(n);    
     calc_score(ig, score_tab);
@@ -270,20 +273,10 @@ int main(int argc, char* argv[]) {
                score_tab[2][i].tot_score,
                ibd_path[i]);
     }
+    printf( "#%% IBD0 (n = %.0f): %.2f\n", n_ibd0, (n_ibd0/n)*100 );
+    printf( "#%% IBD1 (n = %.0f): %.2f\n", n_ibd1, (n_ibd1/n)*100 );
+    printf( "#%% IBD2 (n = %.0f): %.2f\n", n_ibd2, (n_ibd2/n)*100 );
 
-    printf( "%% IBD0 (n = %.0f): %.2f\n", n_ibd0, (n_ibd0/n)*100 );
-    printf( "%% IBD1 (n = %.0f): %.2f\n", n_ibd1, (n_ibd1/n)*100 );
-    printf( "%% IBD2 (n = %.0f): %.2f\n", n_ibd2, (n_ibd2/n)*100 );
-    
-    //fprintf(fpout, "# p01=%lf, p02=%lf, p12=%lf\n",
-    //        IBD0_IBD1_penalty, IBD0_IBD2_penalty, IBD1_IBD2_penalty);
-    //for (int i = 0; i < n; i++) {
-    //    fprintf(fpout, "%d\n", ibd_path[i]);
-    //}
-
-    free(summary_fn);
-    free(out_fn);
-    free(chr);
     free(ig);
     destroy_score_tab(score_tab);
     return 0;

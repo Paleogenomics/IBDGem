@@ -434,6 +434,22 @@ int base_inx_from_pul( PulP pp,
   }
 }
 
+
+/* Counts how many times a base occurs in a Pileup line
+   Args: PulP pul         - pointer to Pileup line
+         const char base  - base of interest
+   Returns: number of occurrences of the specified base */
+unsigned int count_base_from_pul(PulP pul, const char base) {
+    unsigned int count = 0;
+    for (int i = 0; i < pul->cov; i++) {
+        if (pul->bases[i] == base) {
+            count++;
+        }
+    }
+    return count;
+}
+
+
 static int cmp_Pul( const void *pul1, const void *pul2 ) {
   Pul* p1 = (Pul*) pul1; // key
   Pul** pp2 = (Pul**) pul2; // pointer to pointer of Pul
@@ -468,64 +484,70 @@ Pul* fetch_Pul( const Pu_chr* puc, const size_t pos ) {
   return *found_pul_p;
 }
 
-Pu_chr* init_Pu_chr( const char* fn ) {
-  Pu_chr* puc;
-  size_t i = 0;
-  size_t n;
+Pu_chr* init_Pu_chr( const char* fn, const char* chr ) {
+  Pu_chr* puc = malloc(sizeof(Pu_chr));
+  Pul* puls = NULL;
+  size_t curr = 0; // current array index
+  size_t n = 0; // actual size of puls array
   int status;
   File_Src* pu_file;
-  char pu_str[ MAX_FIELD_WIDTH*2];
-
-  /* How many mpileup lines? Count them! */
+  char pu_str[MAX_FIELD_WIDTH*2];
+  
   pu_file = init_FS( fn );
   if (!pu_file) {
-    exit(1);
-  }
-  while( get_line_FS( pu_file, pu_str ) != NULL ) {
-    i++;
-  }
-  destroy_FS( pu_file );
-  n = i;
-  puc = (Pu_chr*)malloc(sizeof(Pu_chr));
-  if ( puc == NULL ) {
     return NULL;
   }
-
-  puc->puls = (Pul**)malloc(sizeof(Pul*) * n);
-  puc->pul_arr = (Pul*)malloc(sizeof(Pul) * n);
-  if ( (puc->puls == NULL) || (puc->pul_arr == NULL) ) {
-    return NULL;
-  }
-  for( i = 0; i < n; i++ ) {
-    puc->puls[i] = &puc->pul_arr[i];
-  }
-  puc->n_puls = n;
-
-  /* Now it's the right size & memories are allocated.
-     Let's parse the input file for realsies...*/
-  pu_file = init_FS( fn );
-  i = 0; // reset index
-  while( get_line_FS( pu_file, pu_str ) != NULL ) {
-    status = line2pul( pu_str, puc->puls[i] );
-    if ( status ) {
-      if ( status == 1 ) {
-	/* Coverage too high. No big deal */
-	;
+  while (get_line_FS(pu_file, pu_str)) {
+    if (curr == n) {
+      n += STEPSIZE;
+      Pul* tmp = realloc(puls, n * sizeof(Pul));
+      if (!tmp) {
+        fprintf( stderr, "[::] ERROR in init_Pu_chr(): Cannot realloc.\n" );
+        if (puls) {
+          free(puls);
+        }
+        return NULL;
       }
-      if ( status == 2 ) {
-	fprintf( stderr, "Problem parsing %s\n", pu_str );
+      puls = tmp;
+    }
+    status = line2pul(pu_str, &puls[curr]);
+    if (status) {
+      if (status == 1) {
+	      // Coverage too high. No big deal
+	      ;
+      }
+      else if (status == 2) {
+	      fprintf( stderr, "Problem parsing %s\n", pu_str );
+      }
+    }
+    else if (chr) {
+      if (strcmp(puls[curr].chr, chr) == 0) {
+        curr++;
       }
     }
     else {
-      i++;
+      // chromosome not specified, will not check
+      curr++;
     }
   }
-  puc->n_puls = i; // This may be shorter since some lines
+  if (curr == 0) {
+    fprintf( stderr, "[::] ERROR in init_Pu_chr(): Cannot parse mpileup lines from %s.\n", fn );
+    return NULL;
+  }
+
+  puc->pul_arr = puls;
+  // This may be shorter since some lines
   // failed parsing filters, like coverage cutoff
-  /* Now, make sure lines are sorted */
-  for( i = 0; i < puc->n_puls - 1; i++ ) {
-    /* Make sure position of each pul is less than the
-       one following, i.e., make sure input was sorted */
+  puc->n_puls = curr;
+  puc->puls = malloc(puc->n_puls * sizeof(Pul*));
+  for (int i = 0; i < puc->n_puls; i++) {
+    puc->puls[i] = &puc->pul_arr[i];
+  }
+
+  // Now, make sure lines are sorted 
+  for ( int i = 0; i < puc->n_puls - 1; i++ ) {
+    // Make sure position of each pul is less than the
+    //   one following, i.e., make sure input was sorted
     if ( puc->puls[i]->pos > puc->puls[i+1]->pos ) {
       fprintf( stderr, "mpileup lines not sorted!\n" );
       destroy_FS( pu_file );

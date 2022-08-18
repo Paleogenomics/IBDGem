@@ -1,12 +1,24 @@
-/*** Aggregate: Module for aggregating IBDGem's generated likelihood 
- * calculations over a certain number of sites.
+/***
+ * Aggregate: Module for aggregating IBDGem's likelihood results over a fixed number of sites.
 ***/
 
+#include <getopt.h>
 #include "file-io.h"
 
 static unsigned int L_DP = 1;
 static unsigned int H_DP = 5;
 static unsigned int BSIZE = 100;
+
+/** Long options table **/
+static struct option longopts[] = {
+    { "comparison-file",      required_argument, 0, 'c' },
+    { "num-sites",            required_argument, 0, 'n' },
+    { "max-cov",              required_argument, 0, 'H' },
+    { "min-cov",              required_argument, 0, 'L' },
+    { "help",                 no_argument, 0, 'h' },
+    { 0, 0, 0, 0}
+};
+
 
 int passes_filters(int n_obs) {
     if ( (n_obs < L_DP) || (n_obs > H_DP) ) {
@@ -15,17 +27,38 @@ int passes_filters(int n_obs) {
     return 1;
 }
 
+
+void print_help(int code) {
+    fprintf( stderr, "AGGREGATE: Summarizes IBDGem output by partitioning the genomic region into bins containing\n" );
+    fprintf( stderr, "           a fixed number of SNPs and calculates the aggregated likelihoods in each bin.\n" );
+    fprintf( stderr, "           These bins can be plotted to see regional trends. Input data must be sorted by position.\n\n" );
+    fprintf( stderr, "Usage: ./aggregate -c [comparison-file] [other options...] >[out-file]\n" );
+    fprintf( stderr, "-c, --comparison-file  FILE      Comparison table from IBDGem (required)\n" ); 
+	fprintf( stderr, "-n, --num-sites  INT             Number of sites per bin (default: 100)\n" );
+    fprintf( stderr, "-H, --max-cov  INT               High coverage cutoff for comparison data (default: 5)\n" );
+	fprintf( stderr, "-L, --min-cov  INT               Low coverage cutoff for comparison data (default: 1)\n" );
+	fprintf( stderr, "-h, --help                       Show this help message and exit\n\n" );
+    fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
+    fprintf( stderr, "POS_START POS_END AGGR_LIBD0 AGGR_LIBD1 AGGR_LIBD2 NUM_SITES\n" );
+    exit(code);
+}
+
+
 int main(int argc, char* argv[]) {
 
     int option;
-    char* opts = ":L:H:n:c:";
-    char* comp_fn = NULL;
+    char* opts = ":c:n:H:L:h";
+    char comp_fn[MAX_FN_LEN];
     int n_sites = 0;
     double af, libd0, libd1, libd2;
     unsigned int dp, a0, a1, n_ref, n_alt;
     size_t pos, bend, bstart = 1;
 
-    while ( (option = getopt(argc, argv, opts)) != -1 ) {
+    if (argc == 1) {
+        print_help(0);
+    }
+
+    while ( (option = getopt_long(argc, argv, opts, longopts, NULL)) != -1 ) {
         switch (option) {
             case 'L':
                 L_DP = atoi(optarg);
@@ -37,45 +70,34 @@ int main(int argc, char* argv[]) {
                 BSIZE = atoi(optarg);
                 break;
             case 'c':
-                comp_fn = strdup(optarg);
+                strcpy(comp_fn, optarg);
                 break;
+            case 'h':
+                print_help(0);
             case ':':
-                fprintf(stderr, "Option -%c missing required argument.\n", optopt);
+                fprintf( stderr, "Option -%c missing required argument.\n", optopt );
                 exit(0);
             case '?':
                 if (isprint(optopt)) {
-                    fprintf(stderr, "Invalid option -%c.\n", optopt);
+                    fprintf( stderr, "Invalid option -%c.\n", optopt );
                 }
                 else {
-                    fprintf(stderr, "Invalid option character '\\x%x'.\n", optopt);
+                    fprintf( stderr, "Invalid option character.\n" );
                 }
                 break;
             default:
-                fprintf(stderr, "Error parsing command-line options.\n");
+                fprintf( stderr, "[::] ERROR parsing command-line options.\n" );
                 exit(0);
         }
     }
     
     for (int i = optind; i < argc; i++) {
-        printf("Non-option argument %s\n", argv[i]);
+        fprintf( stderr, "Given extra argument %s.\n", argv[i] );
     }
-
-    if (!comp_fn) {
-        fprintf( stderr, "AGGREGATE: Summarizes the output of IBDGem\n" );
-	    fprintf( stderr, "Writes the aggregated likelihoods across bins of the input file\n" );
-	    fprintf( stderr, "These bins can be plotted to see regional trends\n" );
-	    fprintf( stderr, "Input data must be sorted by position\n" );
-        fprintf( stderr, "-c (required) <input comparison table from IBDGem>\n" );  
-	    fprintf( stderr, "-n            <number of sites per bin (default: 100)>\n" );
-	    fprintf( stderr, "-L            <low coverage cutoff for comparison data (default: 1)>\n" );
-	    fprintf( stderr, "-H            <high coverage cutoff for comparison data (default: 5)>\n" );
-        fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-        fprintf( stderr, "POS_START POS_END AGGR_LIBD0 AGGR_LIBD1 AGGR_LIBD2 NUM_SITES\n" );
-        exit(0);
-    }
-
+    
     File_Src* f = init_FS(comp_fn);
     if (!f) {
+        fprintf( stderr, "[::] ERROR parsing comparison data; make sure input is valid.\n" );
         exit(1);
     }
     long double aggr_ibd0 = 1.0;
@@ -109,6 +131,5 @@ int main(int argc, char* argv[]) {
                 bstart, bend, aggr_ibd0, aggr_ibd1, aggr_ibd2, n_sites );
     }
     destroy_FS(f);
-    free(comp_fn);
     return 0;
 }

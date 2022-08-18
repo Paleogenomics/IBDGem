@@ -11,8 +11,7 @@
 #define MAX_FIELD_WIDTH (10240)
 #define MAX_COV (128)
 #define MAX_ID_LEN (256)
-// Can be reset once we find the max from actual
-// tables
+#define STEPSIZE 200000
 
 typedef enum { false, true } bool;
 
@@ -48,7 +47,8 @@ int line2pul( char* line, PulP pp );
 int base_inx_from_pul( PulP pp,
                        unsigned int mqc,
 		       unsigned int covc  );
+unsigned int count_base_from_pul(PulP pul, const char base);
 Pul* fetch_Pul( const Pu_chr* puc, const size_t pos );
-Pu_chr* init_Pu_chr( const char* fn );
+Pu_chr* init_Pu_chr( const char* fn, const char* chr );
 int destroy_Pu_chr(Pu_chr* puc);
 #endif /* PILEUP_H */
