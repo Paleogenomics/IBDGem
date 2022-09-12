@@ -12,9 +12,12 @@ IBDGem takes in a Pileup file containing sequence information of the unidentifie
 as well as phased genotype data from a test individual or panel of individuals, which 
 consists of 3 files in the IMPUTE reference-panel format.
 The Pileup file can be generated from a BAM file with ```samtools```:
-```samtools mpileup -o [out.pileup] [in.bam]```
-The 3 IMPUTE-formatted files can be generated from a VCF file with ```vcftools```:
+```bash
+samtools mpileup -o [out.pileup] [in.bam]
 ```
+
+The 3 IMPUTE-formatted files can be generated from a VCF file with ```vcftools```:
+```bash
 vcftools  [ --vcf [in.vcf] | --gzvcf [in.vcf.gz] ] \
           --max-alleles 2 --min-alleles 2 \
           --out [out-prefix] \
@@ -117,26 +120,28 @@ Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
 
 ## Installation
 ### To compile
-In the IBDGem main directory, type
-```
+In the IBDGem main directory, type:
+```bash
 make
 ```
-Separate modules can also be compiled individually by typing
-```
+Separate modules can also be compiled individually by typing:
+```bash
 make [module_name]
 ```
-For example, to compile ```hiddengem.c```, type
-```
+For example, to compile the ```hiddengem``` program, type:
+```bash
 make hiddengem
 ```
-
 ### To remove object files and executables
-In the IBDGem main directory, type
-```
+In the IBDGem main directory, type:
+```bash
 make clean
 ```
 
 ## Auxiliary files:
+The ```bin``` directory contains an independent Python script for converting tab-delimited
+genotype reports to VCF format, which can then be further converted to IMPUTE2 for use with
+IBDGem.
 #### gt2vcf.py
 ```
 gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allele1, allele2
@@ -148,7 +153,7 @@ Usage: python gt2vcf.py [genotype-file] [info-file] [sampleID] [out-file]
 ```
 **Note**: ```gt2vcf.py``` requires the Python libraries ```pandas``` and ```numpy```.
 These libraries can be installed with ```pip```:
-```
+```bash
 pip install pandas
 pip install numpy
 ```

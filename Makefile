@@ -1,33 +1,38 @@
 CC=gcc
 CFLAGS=-ggdb3 -Wall -pthread
-OBJS=file-io.o load-i2.o pileup.o ibd-math.o
+OBJS=$(addprefix $(BUILD)/, file-io.o load-i2.o pileup.o ibd-math.o)
 LDFLAGS=-lz -lm
+
+SRC   := src
+BUILD := build
+VPATH = $(SRC)
 
 .PHONY: all
 all: ibdgem hiddengem aggregate
 
+$(BUILD)/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build:
+	mkdir -p $(BUILD)
+
 ibdgem: $(OBJS)
 	@echo Building ibdgem...
-	$(CC) $(CFLAGS) $(OBJS) $@.c $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) $(OBJS) $(SRC)/$@.c $(LDFLAGS) -o $@
 	@echo Done.
 
-hiddengem: file-io.o
+hiddengem: $(BUILD)/file-io.o
 	@echo Building hiddengem...
-	$(CC) $(CFLAGS) $? $@.c -lz -o $@
+	$(CC) $(CFLAGS) $? $(SRC)/$@.c -lz -o $@
 	@echo Done.
 
-aggregate: file-io.o
+aggregate: $(BUILD)/file-io.o
 	@echo Building aggregate...
-	$(CC) $(CFLAGS) $? $@.c -lz -o $@
+	$(CC) $(CFLAGS) $? $(SRC)/$@.c -lz -o $@
 	@echo Done.
-
-file-io.o: file-io.h file-io.c
-load_i2.o: load-i2.h load-i2.c
-pileup.o: pileup.h pileup.c
-ibd-math.o: ibd-math.h ibd-math.c
 
 .PHONY: clean
 clean:
 	@echo Removing all object files and executables...
-	rm -f $(OBJS) ibdgem hiddengem aggregate
+	rm -rf $(BUILD) ibdgem hiddengem aggregate
 	@echo Done.
