@@ -9,8 +9,8 @@ the program evaluates the likelihood that the genotypes' source individual could
 generated the DNA sample of interest.
  
 IBDGem takes in a Pileup file containing sequence information of the unidentified sample, 
-as well as phased genotype data from a test individual or panel of individuals, which 
-consists of 3 files in the IMPUTE reference-panel format.
+as well as genotype data from a test individual or panel of individuals, which consists 
+of 3 files in the IMPUTE reference-panel format.
 The Pileup file can be generated from a BAM file with ```samtools```:
 ```bash
 samtools mpileup -o [out.pileup] [in.bam]
@@ -27,7 +27,7 @@ The above command will produce 3 files with extensions ```.hap```, ```.legend```
 they are to be used as inputs to IBDGem along with the Pileup file.
 If, instead of a VCF, you have a microarray-derived genotype file with 4 columns: rsID, chrom, 
 allele1, allele2, you can use the ```gt2vcf.py``` script included in this repository to first 
-convert the genotype file to VCF format.
+convert the genotype file to VCF format (see Auxiliary files section below).
 **Note**: Because the ```--IMPUTE``` argument in ```vcftools``` assumes phased data, but IBDGem 
 does not require phased genotypes, one can superficially modify the VCF to change the genotype
 notation from ```A0/A1``` to ```A0|A1``` to work with ```--IMPUTE``` with the bash command:
@@ -156,6 +156,9 @@ ibdgem -H test.hap -L test.legend -I test.indv -P test1.pileup -N sample1
 ```
 This will generate 3 output tables for the pairwise comparisons of sample1-vs-sample1/sample2/sample3.
 You can find these same tables in the ```output``` folder within ```ibdgem-test```.
+
+For comparisons of real forensic samples, using the ```--variable-sites-only/-v``` option is
+recommended to exclude uninformative sites. 
 
 ## Auxiliary files:
 The ```bin``` directory contains an independent Python script for converting tab-delimited
