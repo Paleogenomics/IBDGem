@@ -28,8 +28,12 @@ they are to be used as inputs to IBDGem along with the Pileup file.
 If, instead of a VCF, you have a microarray-derived genotype file with 4 columns: rsID, chrom, 
 allele1, allele2, you can use the ```gt2vcf.py``` script included in this repository to first 
 convert the genotype file to VCF format.
-**Note**: Because the ```--IMPUTE``` argument in ```vcftools``` assumes phased data, IBDGem currently 
-only works with phased genotypes.
+**Note**: Because the ```--IMPUTE``` argument in ```vcftools``` assumes phased data, but IBDGem 
+does not require phased genotypes, one can superficially modify the VCF to change the genotype
+notation from ```A0/A1``` to ```A0|A1``` to work with ```--IMPUTE``` with the bash command:
+```bash
+sed "/^##/! s/\//|/g" unphased.vcf > mockphased.vcf
+```
 
 The output of IBDGem is a tab-delimited file with the following fields: 
 POS, REF, ALT, rsID, AF, DP, GT_A0, GT_A1, SQ_NREF, SQ_NALT, LIBD0, LIBD1, LIBD2.
@@ -138,6 +142,21 @@ In the IBDGem main directory, type:
 make clean
 ```
 
+## Running IBDGem
+In the ```supplementary``` directory, you will find the ```ibdgem-test``` folder that contains
+a test suite of inputs (as well as example outputs) for test-running the program. The IMPUTE
+files store genotype information of 10 SNP sites for 3 samples: ```sample1```, ```sample2```,
+and ```sample3```. The ```test1.pileup```, ```test2.pileup```, and ```test3.pileup``` files 
+contain the  sequence data for those corresponding samples.
+
+To perform a run on these mock files, for example to compare the sequence data in ```test1.pileup```
+to the 3-sample panel whose genotypes are described in the test IMPUTEs, type:
+```bash
+ibdgem -H test.hap -L test.legend -I test.indv -P test1.pileup -N sample1
+```
+This will generate 3 output tables for the pairwise comparisons of sample1-vs-sample1/sample2/sample3.
+You can find these same tables in the ```output``` folder within ```ibdgem-test```.
+
 ## Auxiliary files:
 The ```bin``` directory contains an independent Python script for converting tab-delimited
 genotype reports to VCF format, which can then be further converted to IMPUTE2 for use with
@@ -158,3 +177,5 @@ pip install pandas
 pip install numpy
 ```
 To install without root access, add the ```--user``` argument to the commands above.
+
+For any question about the program or suggestions, please reach out to: ```rennguye@ucsc.edu```.

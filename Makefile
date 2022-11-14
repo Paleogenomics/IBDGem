@@ -11,10 +11,8 @@ VPATH = $(SRC)
 all: ibdgem hiddengem aggregate
 
 $(BUILD)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-build:
 	mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 ibdgem: $(OBJS)
 	@echo Building ibdgem...
