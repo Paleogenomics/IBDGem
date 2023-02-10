@@ -7,7 +7,7 @@
 #include <string.h>
 #include <zlib.h>
 
-#define MAX_LINE_LEN 13312
+#define MAX_LINE_LEN 30720
 #define MAX_FN_LEN 1024
 
 /* File_Src is a structure that holds information about

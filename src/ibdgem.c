@@ -1,5 +1,6 @@
 /*** 
  * IBDGEM - Program for genetic identification from low-coverage sequencing data
+ * (c) Remy Nguyen & Ed Green / UC Regents
  * Compares sequence alignment information from an unknown sample to known genotypes
  * generated through deep-sequencing or other means and evaluates the likelihood that
  * the sample in the sequencing data shares 0, 1, or 2 IBD chromosomes with the
@@ -20,11 +21,14 @@
 
 static double EPSILON = 0.02;
 static unsigned int USER_MAX_COV = 20;
+static double USER_MIN_QUAL = 0;
 static double USER_MAX_AF = 1;
 static double USER_MIN_AF = 0;
 static unsigned int NUM_THREADS = 1;
 static char* SQ_ID = "UNKWN";
 
+static int IN_IMPUTE = 0; // flag for IMPUTE input
+static int IN_VCF = 0; // flag for VCF input
 static int OPT_S1 = 0; // flag for comparing a subset of samples from user-specified file
 static int OPT_S2 = 0; // flag for comparing a subset of samples supplied through command line
 static int OPT_A = 0; // flag for using user-specified allele frequencies
@@ -33,7 +37,8 @@ static int OPT_V = 0; // flag for skipping sites that are homozygous REF
 static int OPT_D = 0; // down-sampling flag
 
 /** Long options table **/
-static struct option longopts[] = {
+static struct option longopts[] = { 
+    { "vcf",                  required_argument, 0, 'V' },
     { "hap",                  required_argument, 0, 'H' },
     { "legend",               required_argument, 0, 'L' },
     { "indv",                 required_argument, 0, 'I' },
@@ -48,6 +53,7 @@ static struct option longopts[] = {
     { "max-af",               required_argument, 0, 'F' },
     { "min-af",               required_argument, 0, 'f' },
     { "positions",            required_argument, 0, 'p' },
+    { "min-qual",             required_argument, 0, 'q' },
     { "chromosome",           required_argument, 0, 'c' },
     { "threads",              required_argument, 0, 't' },
     { "error-rate",           required_argument, 0, 'e' },
@@ -201,6 +207,14 @@ double do_pD_calc(unsigned long** nCk, Prob_sum** ptab, Impute2* i2,
         if (!is_snp(ref, alt)) {
             ptab[i]->failed_filters = 1;
             continue;
+        }
+        
+        // QUAL field lower than specified? excluded from analysis
+        if (IN_VCF && USER_MIN_QUAL > 0) {
+            if (i2->qual[i] < USER_MIN_QUAL) {
+                ptab[i]->failed_filters = 1;
+                continue;
+            }
         }
 
         unsigned long pos = i2->pos[i];
@@ -374,9 +388,11 @@ void print_help(int code) {
     fprintf( stderr, "        from a reference individual/panel and calculates the likelihood that the samples\n" );
     fprintf( stderr, "        share 0, 1, or 2 IBD chromosomes.\n\n" );
     fprintf( stderr, "Usage: ./ibdgem -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]\n" );
-    fprintf( stderr, "-H, --hap  FILE                 HAP file (required)\n" );
-    fprintf( stderr, "-L, --legend  FILE              LEGEND file (required)\n" );
-    fprintf( stderr, "-I, --indv  FILE                INDV file (required)\n" );
+    fprintf( stderr, "       OR ./ibdgem -V [vcf-file] -P [pileup-file] [other options...]\n" );
+    fprintf( stderr, "-V, --vcf  FILE                 VCF file (required if using VCF)\n" );
+    fprintf( stderr, "-H, --hap  FILE                 HAP file (required if using IMPUTE)\n" );
+    fprintf( stderr, "-L, --legend  FILE              LEGEND file (required if using IMPUTE)\n" );
+    fprintf( stderr, "-I, --indv  FILE                INDV file (required if using IMPUTE)\n" );
     fprintf( stderr, "-P, --pileup  FILE              PILEUP file (required)\n" );
     fprintf( stderr, "-N, --pileup-name  STR          Name of individual in Pileup (default: UNKWN)\n" );
     fprintf( stderr, "-A, --allele-freqs  FILE        File containing allele frequencies from an external panel;\n" );
@@ -392,6 +408,7 @@ void print_help(int code) {
     fprintf( stderr, "                                   CHROM, POS (1-based coordinates) or BED format (0-based coordinates);\n" );
     fprintf( stderr, "                                   use in conjunction with -c if includes multiple chromosomes\n" );
     fprintf( stderr, "                                   (default: perform comparison at all sites)\n" );
+    fprintf( stderr, "-q, --min-qual  FLOAT           Genotype quality minimum when using VCF input (default: no minimum)\n" );
     fprintf( stderr, "-M, --max-cov  INT              Maximum estimated coverage of Pileup data (default: 20)\n" );
     fprintf( stderr, "-F, --max-af  FLOAT             Maximum alternate allele frequency (default: 1)\n" );
     fprintf( stderr, "-f, --min-af  FLOAT             Minimum alternate allele frequency (default: 0)\n" );
@@ -419,8 +436,10 @@ int main(int argc, char* argv[]) {
     start = clock();
 
     int option;
-    char* opts = ":H:L:I:P:N:A:S:s:p:M:F:f:D:O:c:t:e:vh";
+    char* opts = ":V:H:L:I:P:N:A:S:s:p:q:M:F:f:D:O:c:t:e:vh";
 
+    Impute2* i2 = NULL;
+    char vcf_fn[MAX_FN_LEN];
     char hap_fn[MAX_FN_LEN];
     char legend_fn[MAX_FN_LEN];
     char indv_fn[MAX_FN_LEN];
@@ -448,13 +467,20 @@ int main(int argc, char* argv[]) {
     }
     while ( (option = getopt_long(argc, argv, opts, longopts, NULL)) != -1 ) {
         switch (option) {
+            case 'V':
+                IN_VCF = 1;
+                strcpy(vcf_fn, optarg);
+                break;
             case 'H':
+                IN_IMPUTE = 1;
                 strcpy(hap_fn, optarg);
                 break;
             case 'L':
+                IN_IMPUTE = 1;
                 strcpy(legend_fn, optarg);
                 break;
             case 'I':
+                IN_IMPUTE = 1;
                 strcpy(indv_fn, optarg);
                 break;
             case 'P':
@@ -487,6 +513,9 @@ int main(int argc, char* argv[]) {
             case 'p':
                 OPT_P = 1;
                 strcpy(pos_fn, optarg);
+                break;
+            case 'q':
+                USER_MIN_QUAL = atof(optarg);
                 break;
             case 'c':
                 uchr = optarg;
@@ -528,6 +557,26 @@ int main(int argc, char* argv[]) {
     for (int i = optind; i < argc; i++) {
         fprintf( stderr, "Given extra argument %s.\n", argv[i] );
     }
+    if ( OPT_D && target_dp <= 0 ) {
+        fprintf( stderr, "[::] ERROR: Invalid down-sample coverage (-D) of %.2f (must be > 0).\n", target_dp );
+        exit(0);
+    }
+    if ( USER_MIN_AF < 0 ) {
+        fprintf( stderr, "[::] ERROR: Invalid minimum alternate allele frequency (-f) of %.2f (must be >= 0).\n", USER_MIN_AF );
+        exit(0);
+    }
+    if ( USER_MAX_AF > 1 ) {
+        fprintf( stderr, "[::] ERROR: Invalid maximum alternate allele frequency (-F) of %.2f (must be <= 1).\n", USER_MAX_AF );
+        exit(0);
+    }
+    if ( USER_MAX_COV < 1 ) {
+        fprintf( stderr, "[::] ERROR: Invalid maximum estimated coverage (-M) of %u (must be >= 1).\n", USER_MAX_COV );
+        exit(0);
+    }
+    if ( USER_MIN_QUAL < 0 ) {
+        fprintf( stderr, "[::] ERROR: Invalid genotype quality minimum (-q) of %.2f (must be >= 0).\n", USER_MIN_QUAL );
+        exit(0);
+    }
 
     // first copy the first argument into str_cmd to initialize it
     strcpy(str_cmd, argv[0]);
@@ -537,10 +586,19 @@ int main(int argc, char* argv[]) {
         strcat(str_cmd, " ");
     }
 
-    Impute2* i2 = init_I2(hap_fn, legend_fn, indv_fn);
+    if (IN_VCF && IN_IMPUTE) {
+        fprintf( stderr, "[::] WARNING: 2 types of genotype input detected. Ignoring IMPUTE and processing VCF...\n" );
+        i2 = init_vcf(vcf_fn);
+    }
+    else if (IN_VCF) {
+        i2 = init_vcf(vcf_fn);
+    }
+    else if (IN_IMPUTE) {
+        i2 = init_I2(hap_fn, legend_fn, indv_fn);
+    }
     Pu_chr* puc = init_Pu_chr(pu_fn, uchr);
     if (!i2 || !puc) {
-        fprintf( stderr, "[::] ERROR parsing genotype and/or sequence data; make sure input is valid.\n" );
+        fprintf( stderr, "[::] ERROR parsing genotype and/or sequence files; make sure paths are valid.\n" );
         exit(1);
     }
     
@@ -582,13 +640,6 @@ int main(int argc, char* argv[]) {
             destroy_Pu_chr(puc);
             exit(1);
         }
-    }
-    
-    if ( OPT_D && target_dp <= 0 ) {
-        fprintf( stderr, "Invalid target depth of coverage (must be > 0).\n" );
-        destroy_I2(i2);
-        destroy_Pu_chr(puc);
-        exit(0);
     }
 
     Prob_sum** ptab = malloc(i2->n_sites * sizeof(Prob_sum*));

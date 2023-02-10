@@ -1,6 +1,8 @@
 #include "load-i2.h"
 #include "file-io.h"
 
+static int VCF_HDR_PRESENT = 0;
+static int VCF_FRMT_PRESENT = 0;
 
 /* Private function for freeing memory allocated by array of char pointers 
    Args: char** ptrarr - pointer to char pointer array 
@@ -34,6 +36,220 @@ static int free_iparr(unsigned short** ptrarr, int n) {
 }
 
 
+/* Private function for determining if site is biallelic 
+   Args: const char* alt - pointer to alternate allele string 
+   Returns: 1 if biallelic, 0 otherwise */
+static int is_biallelic(const char* alt) {
+    // see if alt contains a comma
+    if (strchr(alt, ',') == NULL) {
+        return 1;
+    }
+    return 0;
+}
+
+
+/* Private function for determining if genotype field is valid
+   (first 3 chars are 0s and 1s separated by | or /) 
+   Args: const char* gt - pointer to genotype string
+         regex_t regex - regular expression for pattern checking 
+   Returns: 1 if genotype valid, 0 otherwise */
+static int genotype_ok(const char* gt, regex_t regex) {
+    int rc = regexec(&regex, gt, 0, NULL, 0);
+    if (!rc) {
+        return 1;
+    }
+    return 0;
+}
+
+
+/* Private function for extracting alleles from multiple
+   genotype fields
+   Args: char* gt - pointer to genotype fields as a single string
+         regex_t regex - regular expression for pattern checking
+         int n_samples - number of samples
+         unsigned short* alleles - pointer to alleles array
+   Returns: 0 if successfully parsed, 1 otherwise */
+static int vcf_parse_gt(char* gt, regex_t regex, int n_samples, unsigned short* alleles) {
+    char* token;
+    token = strtok(gt, "\t");
+    // skip FORMAT column if present
+    if (VCF_FRMT_PRESENT == 1) {
+        token = strtok(NULL, "\t");
+    }
+    for (int i = 0; i < n_samples; i++) {
+        if ( genotype_ok(token, regex) )  {
+            alleles[i*2] = token[0] - '0';
+            alleles[i*2+1] = token[2] - '0';
+        }
+        else {
+            return 1;
+        }
+        token = strtok(NULL, "\t");
+    }
+
+    return 0;
+}
+
+
+/* Private function for parsing sample names from VCF header
+   Args: const char* header - pointer to header string
+         Impute2* i2 - pointer to Impute genotype info
+   Returns: 0 if successfully parsed, 1 otherwise */
+static int vcf_parse_samples(const char* header, Impute2* i2) {
+    int n = 0;
+    int arr_size = 200;
+    Sampl* samples = malloc(arr_size * sizeof(Sampl));
+    char* token;
+    char buf[MAX_LINE_LEN];
+    strcpy(buf, header);
+    
+    token = strtok(buf, "\t");
+    // skip FORMAT column if present
+    if (strcmp(token, "FORMAT") == 0) {
+        VCF_FRMT_PRESENT = 1;
+        token = strtok(NULL, "\t");
+    }
+    while (token != NULL) {
+        if (n == arr_size) {
+            arr_size += 200;
+            Sampl* tmp = realloc(samples, arr_size * sizeof(Sampl));
+            if (!tmp) {
+                fprintf( stderr, "[::] ERROR in vcf_parse_samples(): Cannot realloc.\n" );
+                free(samples);
+                return 1;
+            }
+            samples = tmp;
+        }
+        strcpy(samples[n].name, token);
+        samples[n].idx = n*2;
+        token = strtok(NULL, "\t");
+        n++;
+    }
+
+    if (n == 0) {
+        fprintf( stderr, "[::] ERROR: No samples found.\n" );
+        free(samples);
+        return 1;
+    }
+    i2->samples = samples;
+    i2->n_haps = n*2;
+    return 0;
+}
+
+
+/* Private function for parsing VCF file
+   Args: File_Src* vcf - pointer to VCF file
+         Impute2* i2 - pointer to Impute genotype info
+   Returns: 0 if file read successfully, 1 otherwise */
+static int read_vcf(File_Src* vcf, Impute2* i2) {
+    char line[MAX_LINE_LEN];
+    char header[MAX_LINE_LEN];
+    char buf_gt[MAX_LINE_LEN];
+    char buf_id[512], buf_ref[512], buf_alt[512], buf_qual[512], buf_fltr[512], buf_info[512];
+    unsigned long buf_pos;
+
+    char** ids = NULL, **ref = NULL, **alt = NULL;
+    unsigned long* pos = NULL;
+    double* qual = NULL;
+    unsigned short** haps = NULL;
+    int n = 0;
+    int arr_size = 0;
+    
+    // skip metadata lines
+    get_line_FS(vcf, line);
+    while (strstr(line, "##") == line) {
+        get_line_FS(vcf, line);
+    }
+
+    if (sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\t%30720[^\n]", header) == 1) {
+        VCF_HDR_PRESENT = 1;
+        int sample_flag = vcf_parse_samples(header, i2);
+        if (sample_flag) {
+            return 1;
+        }
+    }
+    
+    if (!VCF_HDR_PRESENT) {
+        fprintf( stderr, "[::] ERROR in read_vcf(): No header found.\n" );
+        return 1;           
+    }
+    
+    regex_t regex;
+    int rc_flag = regcomp(&regex, "^[01][/|][01].*$", 0);
+    if (rc_flag) {
+        fprintf( stderr, "[::] ERROR in read_vcf(): Cannot compile regex to check genotype.\n" );
+        return 1;
+    }
+
+    while (get_line_FS(vcf, line)) {
+        if (sscanf(line, "%*s %lu %512[^\t] %512[^\t] %512[^\t] %512[^\t] %512[^\t] %512[^\t] %30720[^\n]",
+                   &buf_pos, buf_id, buf_ref, buf_alt, buf_qual, buf_fltr, buf_info, buf_gt) == 8) {
+
+            // skip site if not biallelic        
+            if (!is_biallelic(buf_alt)) {
+                continue;
+            }
+            if (n == arr_size) {
+                arr_size += STEPSIZE;
+                char** tmp_ids = realloc(ids, arr_size * sizeof(char*));
+                char** tmp_ref = realloc(ref, arr_size * sizeof(char*));
+                char** tmp_alt = realloc(alt, arr_size * sizeof(char*));
+                unsigned long* tmp_pos = realloc(pos, arr_size * sizeof(unsigned long));
+                double* tmp_qual = realloc(qual, arr_size * sizeof(double));
+                unsigned short** tmp_haps = realloc(haps, arr_size * sizeof(unsigned short*));
+                if (!tmp_ids || !tmp_ref || !tmp_alt || !tmp_pos || !tmp_haps) {
+                    fprintf( stderr, "[::] ERROR in read_vcf(): Cannot realloc.\n" );
+		            free_cparr(ids, n);
+                    free_cparr(ref, n);
+                    free_cparr(alt, n);
+                    free_iparr(haps, n);
+                    free(pos);
+                    free(qual);
+                    regfree(&regex);
+                    return 1;
+                }
+                ids = tmp_ids;
+                ref = tmp_ref;
+                alt = tmp_alt;
+                pos = tmp_pos;
+                qual = tmp_qual;
+                haps = tmp_haps;
+            }
+            ids[n] = strdup(buf_id);
+            ref[n] = strdup(buf_ref);
+            alt[n] = strdup(buf_alt);
+            pos[n] = buf_pos;
+            qual[n] = atof(buf_qual);
+
+            unsigned short* alleles = malloc(i2->n_haps * sizeof(unsigned short));
+            int gt_flag = vcf_parse_gt(buf_gt, regex, i2->n_haps/2, alleles);
+            if (gt_flag) {
+                fprintf( stderr, "Failed to parse genotype fields at %lu. Skipping to next site.\n", pos[n]);
+                continue;
+            }
+            haps[n] = alleles;
+            n++;
+        }
+    }
+    
+    if (n == 0) {
+        fprintf( stderr, "[::] ERROR in read_vcf(): No variants parsed from VCF.\n" );
+        regfree(&regex);
+        return 1;
+    }
+    
+    i2->n_sites = n;
+    i2->ids = ids;
+    i2->ref = ref;
+    i2->alt = alt;
+    i2->pos = pos;
+    i2->qual = qual;
+    i2->haps = haps;
+    regfree(&regex);
+    return 0;
+}
+
+
 /* Private function for parsing .hap file 
    Args: File_Src* hf - pointer to .hap file
          Impute2* i2 - pointer to Impute genotype info
@@ -47,22 +263,20 @@ static int read_hap(File_Src* hf, Impute2* i2) {
     int n_haps;
     
     // current array index
-    int curr = 0;
-    
     int n = 0;
+    
+    int arr_size = 0;
     char line[MAX_LINE_LEN+1];
 
     while (get_line_FS(hf, line)) {
 
         // extend array as needed
-        if (curr == n) {
-            n += STEPSIZE;
-            unsigned short** tmp = realloc(haps, n * sizeof(unsigned short*));
+        if (n == arr_size) {
+            arr_size += STEPSIZE;
+            unsigned short** tmp = realloc(haps, arr_size * sizeof(unsigned short*));
             if (!tmp) {
                 fprintf( stderr, "[::] ERROR in read_hap(): Cannot realloc.\n" );
-                if (haps) {
-                    free_iparr(haps, curr);
-                }
+                free_iparr(haps, n);
                 return 1;
             }
             haps = tmp;
@@ -84,25 +298,16 @@ static int read_hap(File_Src* hf, Impute2* i2) {
                 case '1':
                     alleles[i/2] = (unsigned short)1;
                     break;
-                case '2':
-                    alleles[i/2] = (unsigned short)2;
-                    break;
-                case '3':
-                    alleles[i/2] = (unsigned short)3;
-                    break;
-                case '4':
-                    alleles[i/2] = (unsigned short)4;
-                    break;
                 default:
-                    fprintf( stderr, "Invalid allele (expect 0-4).\n" );
+                    fprintf( stderr, "Invalid allele (expect 0 and 1).\n" );
             }
         }
-        haps[curr] = alleles;
-        curr++;
+        haps[n] = alleles;
+        n++;
     }
 
     i2->haps = haps;
-    i2->n_sites = curr;
+    i2->n_sites = n;
     i2->n_haps = n_haps;
     return 0;
 }
@@ -143,7 +348,7 @@ static int read_legend(File_Src* lf, Impute2* i2) {
     }
     
     if (i == 0) {
-        fprintf( stderr, "[::] ERROR in read_legend(): Cannot parse lines from legend file.\n" );
+        fprintf( stderr, "[::] ERROR in read_legend(): Failed to parse legend file.\n" );
         free_cparr(ids, n);
         free_cparr(ref, n);
         free_cparr(alt, n);
@@ -193,7 +398,7 @@ static int read_indv(File_Src* inf, Impute2* i2) {
         i++;
     }
     if (i == 0) {
-        fprintf( stderr, "[::] ERROR in read_indv(): Cannot parse lines from indv file.\n" );
+        fprintf( stderr, "[::] ERROR in read_indv(): No samples found.\n" );
         free(samples);
         return 1;
     }
@@ -386,7 +591,7 @@ int read_af(Impute2* i2, const char* af_fn, const char* chr) {
         }
     }
     if (curr == 0) {
-        fprintf( stderr, "[::] ERROR in read_af(): Cannot parse lines from %s.\n", af_fn );
+        fprintf( stderr, "[::] ERROR in read_af(): Failed to parse %s.\n", af_fn );
         free(af);
         return 1;
     }
@@ -438,7 +643,7 @@ int read_pos(Impute2* i2, const char* pos_fn, const char* chr) {
         }
     }
     if (curr == 0) {
-        fprintf( stderr, "[::] ERROR in read_pos(): Cannot parse lines from %s.\n", pos_fn );
+        fprintf( stderr, "[::] ERROR in read_pos(): Failed to parse %s.\n", pos_fn );
         free(upos);
         return 1;
     }
@@ -489,6 +694,25 @@ Impute2* init_I2(const char* hap_fn, const char* legend_fn, const char* indv_fn)
 }
 
 
+Impute2* init_vcf(const char* vcf_fn) {
+    File_Src* vcf = init_FS(vcf_fn);
+    if (!vcf) {
+        return NULL;
+    }
+    Impute2* i2 = malloc(sizeof(Impute2));
+    int vcfc = read_vcf(vcf, i2);
+    if (vcfc == 1) {
+        destroy_FS(vcf);
+        free(i2);
+        return NULL;
+    }
+    i2->uaf = NULL;
+    i2->upos = NULL;
+    destroy_FS(vcf);
+    return i2;
+}
+
+
 int destroy_I2(Impute2* i2) {
     if (!i2) {
         return 0;
@@ -499,6 +723,7 @@ int destroy_I2(Impute2* i2) {
     free_cparr(i2->ref, n);
     free_cparr(i2->alt, n);
     free(i2->pos);
+    free(i2->qual);
     free(i2->upos);
     free(i2->samples);
     free(i2->uaf);

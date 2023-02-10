@@ -23,6 +23,8 @@ def mergeInfo(gt_fn, info_fn):
 
 
 def formatGT(A0, A1, ref, alt):
+    # use phased notation to be compatible with --IMPUTE,
+    # data don't have to be actually phased
     if A0 == ref and A1 == ref:
         return '0|0'
     elif A0 == alt and A1 == alt:
@@ -48,7 +50,7 @@ def convertToVCF(df, sampleID, out_fn):
             ctg_name = c
         out.write('##contig=<ID=%s,assembly=b37,length=%s>\n' % (c, ctg_len[ctg_name]))
     out.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
-    out.write('##INFO=<ID=VT,Number=.,Type=String,Description="indicates what type of variant the line represents">\n')
+    out.write('##INFO=<ID=VT,Number=1,Type=String,Description="Variant type description">\n')
     out.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{}\n".format(sampleID))
     
     default_QUAL = 100

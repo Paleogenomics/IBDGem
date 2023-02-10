@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 
 #define MAX_NAME_LEN 256
 #define STEPSIZE 200000
@@ -27,11 +28,12 @@ typedef struct freq {
 
 
 /* Impute2 - structure for storing genotype information parsed from IMPUTE2-formatted files.
-    + haps     : stores phased haplotypes (from .hap file)
-    + pos      : stores variant positions (from .legend file)
-    + ids      : stores variant rsIDs (from .legend file)
-    + ref      : stores reference alleles (from .legend file)
-    + alt      : stores alternative alleles (from .legend file)
+    + haps     : stores phased haplotypes (from VCF or IMPUTE .hap file)
+    + pos      : stores variant positions (from VCF or IMPUTE .legend file)
+    + ids      : stores variant rsIDs (from VCF or IMPUTE .legend file)
+    + ref      : stores reference alleles (from VCF or IMPUTE .legend file)
+    + alt      : stores alternative alleles (from VCF or IMPUTE .legend file)
+    + qual     : stores genotype quality (from VCF only)
     + upos     : stores user-specified list of sites to compare
     + n_upos   : number of user-specified sites
     + uaf      : stores user-specified allele frequencies    
@@ -45,6 +47,7 @@ typedef struct impute2 {
     char** ids;
     char** ref;
     char** alt;
+    double* qual;
     unsigned long* upos;
     size_t n_upos;
     Freq* uaf;
@@ -61,6 +64,12 @@ typedef struct impute2 {
          const char* indv_fn    - path to .indv file
    Returns: pointer to an Impute2 object */
 Impute2* init_I2(const char* hap_fn, const char* legend_fn, const char* indv_fn);
+
+
+/* Initializes an Impute2 object with genotype information VCF input
+   Args: const char* vcf_fn     - path to VCF file
+   Returns: pointer to an Impute2 object */
+Impute2* init_vcf(const char* vcf_fn);
 
 
 /* Finds the given sample in i2->samples array

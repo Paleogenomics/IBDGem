@@ -5,13 +5,13 @@ LDFLAGS=-lz -lm
 
 SRC   := src
 BUILD := build
-VPATH = $(SRC)
+vpath %.c $(SRC)
 
 .PHONY: all
 all: ibdgem hiddengem aggregate
 
 $(BUILD)/%.o: %.c
-	mkdir -p $(BUILD)
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 ibdgem: $(OBJS)
@@ -32,5 +32,5 @@ aggregate: $(BUILD)/file-io.o
 .PHONY: clean
 clean:
 	@echo Removing all object files and executables...
-	rm -rf $(BUILD) ibdgem hiddengem aggregate
+	rm -f $(OBJS) ibdgem hiddengem aggregate
 	@echo Done.
