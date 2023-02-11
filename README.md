@@ -13,7 +13,7 @@ generated the DNA sample of interest.
 * [Usage](#usage)
 * [Example run](#example-run)
 * [Main program (ibdgem.c)](#main-program-ibdgemc)
-* [Summarizing results (aggregate.c)](#summarizing-results-aggregatec))
+* [Summarizing results (aggregate.c)](#summarizing-results-aggregatec)
 * [Estimating IBD proportions for relatedness detection (hiddengem.c)](#estimating-ibd-proportions-for-relatedness-detection-hiddengemc)
 * [Auxiliary files](#auxiliary-files)
 
