@@ -75,7 +75,7 @@ The latest version of IBDGem, IBDGem2.0, provides an option (```--LD```) to take
 among alleles into account when calculating the likelihood of the background model (IBD0). To do this,
 the program uses genotypes from a reference set of samples, which consists of either all samples from the
 VCF/IMPUTE files (default) or a specific subset of those samples specified via ```--background-list```.
-IBDGem will then compare the Pileup data against these background individiduals and take the average to be
+IBDGem will then compare the Pileup data against these background individuals and take the average to be
 the likelihood of the data under the IBD0 model, over a genomic segment (determined via ```--window-size```).
 
 The program can be run by customizing the general command:
