@@ -13,7 +13,6 @@ generated the DNA sample of interest.
 * [Usage](#usage)
 * [Example run](#example-run)
 * [Main program (ibdgem.c)](#main-program-ibdgemc)
-* [Summarizing results (aggregate.c)](#summarizing-results-aggregatec)
 * [Estimating IBD proportions for relatedness detection (hiddengem.c)](#estimating-ibd-proportions-for-relatedness-detection-hiddengemc)
 * [Auxiliary files](#auxiliary-files)
 
@@ -67,26 +66,50 @@ vcftools  [ --vcf [in.vcf] | --gzvcf [in.vcf.gz] ] \
           --IMPUTE
 ```
 
-If, instead of a VCF or IMPUTE files, you have a microarray-derived genotype file with 4 columns: 
+If, instead of a VCF or IMPUTE files, you have a general format genotype file with 4 columns: 
 rsID, chrom, allele1, allele2, you can use the ```gt2vcf.py``` script included in this repository to 
 first convert the genotype file to VCF format (see the [Auxiliary files](#auxiliary-files) section).
 
-Then, run the program by customizing the general command:
+#### Linkage disequilibrium (LD) mode
+The latest version of IBDGem, IBDGem2.0, provides an option (```--LD```) to take linkage disequilibrium
+among alleles into account when calculating the likelihood of the background model (IBD0). To do this,
+the program uses genotypes from a reference set of samples, which consists of either all samples from the
+VCF/IMPUTE files (default) or a specific subset of those samples specified via ```--background-list```.
+IBDGem will then compare the Pileup data against these background individiduals and take the average to be
+the likelihood of the data under the IBD0 model, over a genomic segment (determined via ```--window-size```).
+
+The program can be run by customizing the general command:
 ```bash
-ibdgem -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]
+ibdgem [--LD] -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]
 ```
 Or:
 ```bash
-ibdgem -V [vcf-file] -P [pileup-file] [other options...]
+ibdgem [--LD] -V [vcf-file] -P [pileup-file] [other options...]
 ```
 
-**Notes**:
+**Important Notes**:
 1. By default, IBDGem will infer allele frequencies using the genotypes of all individuals in
 the VCF/IMPUTE files. This, however, can lead to decreased accuracy in likelihood calculation 
 if the number of individuals is small (i.e. fewer than 50). Thus, it is recommended in this case that 
-the user provides allele frequencies calculated from a larger reference panel (such as the 1000 Genomes)
-in a separate input file via the  ```--allele-freqs``` option.
-2. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
+the user provides allele frequencies calculated from a larger reference panel (such as the 1000
+Genomes) in a separate file via the  ```--allele-freqs``` option. This is especially important
+when running the program under the regular, non-LD mode, where likelihoods of the IBD0 model are
+calculated on a per-site basis rather than per-haplotype and are thus more dependent on allele
+frequencies.
+
+2. When running IBDGem under LD mode, it is important to make sure that the genotype individuals
+that are used as background are *unrelated* to each other and to the Pileup individual. If there is
+any relatedness, the IBD0 likelihoods will be inflated and LLR(IBD2/IBD0) will be reduced.
+In the case that you have a VCF file with several subject individuals that you want to compare the
+Pileup data to and a number of reference individuals that you want to use for background model
+calculation, you can explicitly specify the list of subject individuals via ```--sample-list``` and
+the background individuals via ```--background-list```. On the other hand, if you have only one subject
+individual and multiple reference individuals in the VCF, and the Pileup data is suspected to be from
+that one subject individual, you can set the Pileup sample name to be the same as the VCF ID of the
+subject individual via ```--pileup-name```, and the program will automatically use all other samples in
+the VCF as background, without having to explicitly specify them with ```--background-list```.
+
+3. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
 phased data, but IBDGem does not need phase information, one can superficially modify the VCF to
 change the genotype notation (```A0/A1``` to ```A0|A1```) with the bash command:
 ```bash
@@ -95,14 +118,24 @@ sed "/^##/! s/\//|/g" unphased.vcf > mockphased.vcf
 The resulting VCF file can then be converted to IMPUTE normally with ```vcftools --IMPUTE```.
 
 ### Output
-The output of IBDGem is a tab-delimited file with the following fields: 
-**POS, REF, ALT, rsID, AF, DP, GT_A0, GT_A1, SQ_NREF, SQ_NALT, LIBD0, LIBD1, LIBD2**.
-Each row corresponds to a single SNP, and the last 3 columns correspond to the likelihoods 
-of model IBD0, IBD1, and IBD2, respectively. From this file, the log-likelihood ratio (LLR) 
-between any two models at any given site can be calculated. Since sites are considered 
-independent, the likelihoods can also be aggregated into non-overlapping bins containing 
-a fixed number of sites to increase the discrimatory power between models and measure 
-regional signals across the genome (see the [Summarizing results (aggregate.c)](#summarizing-results-aggregatec) section).
+IBDGem generates 2 tab-delimited files:
+(1) Table file (*.tab.txt) with information about each site in the following fields:
+  **CHR, rsID, POS, REF, ALT, AF, DP, SQ_NREF, SQ_NALT, GT_A0, GT_A1, LIBD0, LIBD1, LIBD2**.
+    Each row corresponds to a single SNP, and the last 3 columns correspond to the likelihoods 
+    of model IBD0, IBD1, and IBD2, respectively (these likelihoods are *NOT* calculated under
+    LD mode, even with ```--LD``` option specified).
+(2) Summary file (*.summary.txt) with information about each genomic segment in the
+    following fields: **SEGMENT, START, END, LIBD0, LIBD1, LIBD2, NUM_SITES**. **START** and
+    **END** correspond to the physical coordinates of the first and last SNP in the segment,
+    respectively. **NUM_SITES** corresponds to the number of SNPs within the segment over
+    which the likelihoods for models IBD0, IBD1, and IBD2 are aggregated, which can be set using
+    the ```--window-size``` option when running IBDGem (these likelihoods would be calculated
+    under LD mode if ```--LD``` option was specified).
+    
+From these files, the log-likelihood ratio (LLR) between any two models at any given site/segment
+can be calculated. For example, in the special case of determining whether the sequence data derives
+from the same individual as the genotype data versus the model of it coming from an unrelated individual,
+we simply generate LLRs between the IBD2 and IBD0 models.
 
 
 ## Example run
@@ -120,34 +153,38 @@ ibdgem -H test.hap -L test.legend -I test.indv -P test1.pileup -N sample1
 This will generate 3 output tables for the pairwise comparisons of sample1-vs-sample1/sample2/sample3.
 You can find these same tables in the ```output``` folder within ```ibdgem-test```.
 
-**Note**: For comparisons of real forensic samples, using the ```--variable-sites-only/-v``` option is
-recommended to exclude uninformative sites.
+**Note**: In general, using the ```--variable-sites-only/-v``` option is recommended to exclude
+uninformative sites.
 
 
 ## Main program (ibdgem.c)
 Below is the full description of the main program's options:
 ```
-IBDGem: Compares low-coverage sequencing data from an unknown sample to known genotypes
-        from a reference individual/panel and calculates the likelihood that the samples
-        share 0, 1, or 2 IBD chromosomes.
+IBDGem-2.0: Compares low-coverage sequencing data from an unknown sample to known genotypes
+            from a reference individual/panel and calculates the likelihood that the samples
+            share 0, 1, or 2 IBD chromosomes.
 
-Usage: ./ibdgem -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]
-       OR ./ibdgem -V [vcf-file] -P [pileup-file] [other options...]
+Usage: ./ibdgem [--LD] -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]
+       OR ./ibdgem [--LD] -V [vcf-file] -P [pileup-file] [other options...]
+--LD                            Linkage disequilibrium mode ON (default: OFF)
 -V, --vcf  FILE                 VCF file (required if using VCF)
 -H, --hap  FILE                 HAP file (required if using IMPUTE)
 -L, --legend  FILE              LEGEND file (required if using IMPUTE)
 -I, --indv  FILE                INDV file (required if using IMPUTE)
 -P, --pileup  FILE              PILEUP file (required)
--N, --pileup-name  STR          Name of individual in Pileup (default: UNKWN)
--A, --allele-freqs  FILE        File containing allele frequencies from an external panel;
+-N, --pileup-name  STR          Name of Pileup sample (default: UNKWN)
+-A, --allele-freqs  FILE        File containing allele frequencies from a background panel;
                                    must be sorted & whitespace-delimited with columns CHROM, POS, AF;
                                    use in conjunction with -c if includes multiple chromosomes
                                    (default: calculate AF from input genotypes)
 -S, --sample-list  FILE         File containing subset of samples to compare the
                                    sequencing data against; one line per sample
-                                   (default: compare against all samples in genotype panel)
+                                   (default: compare against all samples in genotype file)
 -s, --sample  STR               Sample(s) to compare the sequencing data against; comma-separated
                                    without spaces if more than one (e.g. sample1,sample2,etc.)
+-B, --background-list  FILE     File containing subset of samples to be used as the background panel
+                                   for calculating IBD0 in LD mode; one line per sample
+                                   (default: use all samples in genotype file as background)
 -p, --positions  FILE           List of sites to compare; can be in position list format with 2 columns
                                    CHROM, POS (1-based coordinates) or BED format (0-based coordinates);
                                    use in conjunction with -c if includes multiple chromosomes
@@ -157,60 +194,40 @@ Usage: ./ibdgem -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [
 -F, --max-af  FLOAT             Maximum alternate allele frequency (default: 1)
 -f, --min-af  FLOAT             Minimum alternate allele frequency (default: 0)
 -D, --downsample-cov  FLOAT     Down-sample to this fold-coverage depth
+-w, --window-size  INT          Number of sites per genomic segment over which likelihood results
+                                   are summarized/aggregated (default: 100)
 -O, --out-dir  STR              Path to output directory (default: output to current directory)
 -c, --chromosome  STR           Chromosome on which the comparison is done; if not specified,
                                    will assume that all inputs are on one single chromosome
--t, --threads  INT              Number of threads; only recommended when number of samples to compare
-                                   exceeds 10,000 (default: 1)
 -e, --error-rate  FLOAT         Error rate of sequencing platform (default: 0.02)
--v, --variable-sites-only       If set, make output only for sites that have >=1
-                                   alternate alleles in genotype file for this sample
+-v, --variable-sites-only       If set, make output only for sites that are not
+                                   homozygous reference in the genotype file for this sample
 -h, --help                      Show this help message and exit
 
-Format of output table is tab-delimited with columns:
-POS, REF, ALT, rsID, AF, DP, GT_A0, GT_A1, SQ_NREF, SQ_NALT, LIBD0, LIBD1, LIBD2
-```
+Format of likelihood table is tab-delimited with columns:
+CHR, rsID, POS, REF, ALT, AF, DP, SQ_NREF, SQ_NALT, GT_A0, GT_A1, LIBD0, LIBD1, LIBD2
 
-
-## Summarizing results (aggregate.c)
-The ```aggregate``` module summarizes likelihood results generated by the main program.
-It takes in the file that ibdgem.c produces and multiplies the likelihoods for each IBD
-state over a fixed number of SNPs across the genomic region.
-```
-AGGREGATE: Summarizes IBDGem output by partitioning the genomic region into bins containing
-           a fixed number of SNPs and calculates the aggregated likelihoods in each bin.
-           These bins can be plotted to see regional trends. Input data must be sorted by position.
-
-Usage: ./aggregate -c [comparison-file] [other options...] >[out-file]
--c, --comparison-file  FILE      Comparison table from IBDGem (required)
--n, --num-sites  INT             Number of sites per bin (default: 100)
--H, --max-cov  INT               High coverage cutoff for comparison data (default: 5)
--L, --min-cov  INT               Low coverage cutoff for comparison data (default: 1)
--h, --help                       Show this help message and exit
-
-Format of output table is tab-delimited with columns:
-POS_START POS_END AGGR_LIBD0 AGGR_LIBD1 AGGR_LIBD2 NUM_SITES
+Format of summary file is tab-delimited with columns:
+SEGMENT, START, END, LIBD0, LIBD1, LIBD2, NUM_SITES
 ```
 
 
 ## Estimating IBD proportions for relatedness detection (hiddengem.c)
-The ```hiddengem``` module estimates the most likely path of IBD states across genomic windows
-set by the ```aggregate``` module. It takes in the output of ```aggregate.c``` and returns the
-most likely IBD state at each bin/window. The total IBD proportions can then be used to infer
-relatedness between samples. 
+The ```hiddengem``` module estimates the most likely path of IBD states across genomic regions.
+It takes in the summary file generated by IBDGem and returns the most likely IBD state at each segment.
+The total IBD proportions can then be used to infer relatedness between samples.
 ```
-HIDDENGEM: Finds most probable path of IBD states across genomic bins from IBDGem-derived
-           aggregated likelihoods.
+HIDDENGEM: Finds most probable path of IBD states across genomic segments.
 
 Usage: ./hiddengem -s [summary-file] [other options...] >[out-file]
---summary, -s  FILE      File containing aggregated likelihood results from IBDGem (required)
+--summary, -s  FILE      Summary file from IBDGem likelihood calculation (*.summary.txt) (required)
 --p01  FLOAT             Penalty for switching between states IBD0 and IBD1 (default: 1e-3)
 --p02  FLOAT             Penalty for switching between states IBD0 and IBD2 (default: 1e-6)
 --p12  FLOAT             Penalty for switching between states IBD1 and IBD2 (default: 1e-3)
 --help                   Show this help message and exit
 
 Format of output table is tab-delimited with columns:
-Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
+Segment, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
 ```
 
 

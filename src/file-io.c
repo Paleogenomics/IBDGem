@@ -66,6 +66,20 @@ File_Src* reset_FS( File_Src* fs ) {
   return init_FS( fn );
 }
 
+int rewind_FS( File_Src* fs ) {
+  int res;
+  if ( fs == NULL ) {
+    res = 0;
+  }
+  if ( fs->is_gz ) {
+    res = gzrewind( fs->fgz );
+  }
+  else {
+    res = fseek( fs->f , 0, SEEK_SET );
+  }
+  return res;
+}
+
 int destroy_FS( File_Src* fs ) {
   if ( fs == NULL ) {
     return 0;

@@ -57,8 +57,9 @@ Ibd_genome* init_summary(const char* summary_fn) {
     double l0, l1, l2;
     char line[MAX_LINE_LEN + 1];
     int i = 0;
+    get_line_FS(sf, line);
     while (get_line_FS(sf, line)) {
-        if ( sscanf(line, "%zu\t%zu\t%lf\t%lf\t%lf\t%d",
+        if ( sscanf(line, "%*s\t%zu\t%zu\t%lf\t%lf\t%lf\t%d",
                 &ig->start[i],
                 &ig->end[i],
                 &l0, &l1, &l2,
@@ -167,16 +168,15 @@ int destroy_score_tab(Score** score_tab) {
 
 
 void print_help(int code) {
-    fprintf( stderr, "HIDDENGEM: Finds most probable path of IBD states across genomic bins from IBDGem-derived\n" );
-    fprintf( stderr, "           aggregated likelihoods.\n\n" );
+    fprintf( stderr, "HIDDENGEM: Finds most probable path of IBD states across genomic segments.\n\n" );
     fprintf( stderr, "Usage: ./hiddengem -s [summary-file] [other options...] >[out-file]\n" );
-    fprintf( stderr, "--summary, -s  FILE      File containing aggregated likelihood results from IBDGem (required)\n" );
+    fprintf( stderr, "--summary, -s  FILE      Summary file from IBDGem likelihood calculation (*.summary.txt) (required)\n" );
     fprintf( stderr, "--p01  FLOAT             Penalty for switching between states IBD0 and IBD1 (default: 1e-3)\n" );
     fprintf( stderr, "--p02  FLOAT             Penalty for switching between states IBD0 and IBD2 (default: 1e-6)\n" );
     fprintf( stderr, "--p12  FLOAT             Penalty for switching between states IBD1 and IBD2 (default: 1e-3)\n" );
     fprintf( stderr, "--help                   Show this help message and exit\n\n" );
     fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-    fprintf( stderr, "Bin, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State\n" );
+    fprintf( stderr, "Segment, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State\n" );
     exit(code);
 }
 
@@ -251,7 +251,7 @@ int main(int argc, char* argv[]) {
         ibd_path[i] = score_tab[s][i+1].previous->curr_state;
     }
 
-    printf("Bin\tIBD0_Score\tIBD1_Score\tIBD2_Score\tInferred_State\n");
+    printf("Segment\tIBD0_Score\tIBD1_Score\tIBD2_Score\tInferred_State\n");
     // bin counts for each state
     double n_ibd0 = 0;
     double n_ibd1 = 0;

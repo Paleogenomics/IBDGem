@@ -40,6 +40,8 @@ File_Src* init_FS( const char* fn );
 
 File_Src* reset_FS( File_Src* fs );
 
+int rewind_FS( File_Src* fs );
+
 int destroy_FS( File_Src* fs );
 
 FILE* fileOpen( const char* name, char access_mode[] );

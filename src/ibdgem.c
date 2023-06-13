@@ -1,6 +1,6 @@
 /*** 
  * IBDGEM - Program for genetic identification from low-coverage sequencing data
- * (c) Remy Nguyen & Ed Green / UC Regents
+ * (c) UC Regents
  * Compares sequence alignment information from an unknown sample to known genotypes
  * generated through deep-sequencing or other means and evaluates the likelihood that
  * the sample in the sequencing data shares 0, 1, or 2 IBD chromosomes with the
@@ -8,45 +8,49 @@
  *  ***/
 
 #include <unistd.h>
-#include <pthread.h>
 #include <getopt.h>
 #include <time.h>
 
 #include "file-io.h"
-#include "load-i2.h"
+#include "ibd-parse.h"
 #include "pileup.h"
 #include "ibd-math.h"
 
 #define BASES "ACGT"
 
 static double EPSILON = 0.02;
-static unsigned int USER_MAX_COV = 20;
 static double USER_MIN_QUAL = 0;
+static unsigned int USER_MAX_COV = 20;
 static double USER_MAX_AF = 1;
 static double USER_MIN_AF = 0;
-static unsigned int NUM_THREADS = 1;
+static int WINDOWSIZE = 100;
 static char* SQ_ID = "UNKWN";
 
+static int LD_MODE = 0;
 static int IN_IMPUTE = 0; // flag for IMPUTE input
 static int IN_VCF = 0; // flag for VCF input
 static int OPT_S1 = 0; // flag for comparing a subset of samples from user-specified file
 static int OPT_S2 = 0; // flag for comparing a subset of samples supplied through command line
+static int OPT_B = 0; // flag for using user-specified samples as background panel
 static int OPT_A = 0; // flag for using user-specified allele frequencies
 static int OPT_P = 0; // flag for using user-specified sites
 static int OPT_V = 0; // flag for skipping sites that are homozygous REF
 static int OPT_D = 0; // down-sampling flag
 
 /** Long options table **/
-static struct option longopts[] = { 
+static struct option longopts[] = {
+    { "LD",                   no_argument, &LD_MODE, 1},
     { "vcf",                  required_argument, 0, 'V' },
     { "hap",                  required_argument, 0, 'H' },
     { "legend",               required_argument, 0, 'L' },
     { "indv",                 required_argument, 0, 'I' },
     { "pileup",               required_argument, 0, 'P' },
-    { "pileup-name",          required_argument, 0, 'N' }, 
+    { "pileup-name",          required_argument, 0, 'N' },
+    { "window-size",          required_argument, 0, 'w' },
     { "allele-freqs",         required_argument, 0, 'A' },
     { "sample-list",          required_argument, 0, 'S' },
     { "sample",               required_argument, 0, 's' },
+    { "background-list",      required_argument, 0, 'B' },
     { "max-cov",              required_argument, 0, 'M' },
     { "downsample-cov",       required_argument, 0, 'D' },
     { "out-dir",              required_argument, 0, 'O' },
@@ -55,92 +59,41 @@ static struct option longopts[] = {
     { "positions",            required_argument, 0, 'p' },
     { "min-qual",             required_argument, 0, 'q' },
     { "chromosome",           required_argument, 0, 'c' },
-    { "threads",              required_argument, 0, 't' },
     { "error-rate",           required_argument, 0, 'e' },
     { "variable-sites-only",  no_argument, 0, 'v' },
     { "help",                 no_argument, 0, 'h' },
     { 0, 0, 0, 0}
 };
 
-/* Structure for storing probabilities of observed data & 
-other info (ref/alt allele counts, filter flags, etc.) at each site */
-typedef struct prob_sum {
-    unsigned int failed_filters : 1;
-    unsigned int dp;
-    double f;
-    unsigned int n_ref;
-    unsigned int n_alt;
-    double pD_g_ibd0_f;
-    double pD_g_ibd1_00;
-    double pD_g_ibd1_01;
-    double pD_g_ibd1_11;
-    double pD_g_ibd2_00;
-    double pD_g_ibd2_01;
-    double pD_g_ibd2_11;
-} Prob_sum;
+
 
 /* Structure for storing coverage distribution info */
-typedef struct cov_dist {
+typedef struct dpdist {
     unsigned long dist[MAX_COV];
     double mean_cov;
-} Cov_dist;
-
-/* Structure for storing do_compare() arguments */
-typedef struct comp_args {
-    char* str_cmd;
-    Impute2* i2;
-    Prob_sum** ptab;
-    Sampl* samples;
-    int n_samples;
-    double cull_p;
-    Cov_dist* dist;
-} Comp_args;
+} Dpdist;
 
 
-/* Splits the samples to compare (from .indv or a user-provided file) into
-subsets to send to individual threads with size depending on the thread index
-   Args: Sampl* all      - all samples against which to compare the sequencing data
-         Sampl* subset   - samples processed by this thread
-         int thread_i    - index of thread
-         int batch_size  - average number of samples per thread
-         int r           - remainder 
-         int include_r   - flag for including remainding samples in the subset */
-void make_batch(Sampl* all, Sampl* subset, int thread_i,
-                int batch_size, int r, int include_r) {
-    int idx;
-    for (int i = 0; i < batch_size; i++) {
-        idx = (batch_size * thread_i) + i;
-        subset[i] = all[idx];
-    }
-    if (include_r) {
-        for (int i = 0; i < r; i++) {
-            idx = (batch_size * (thread_i+1)) + i;
-            subset[batch_size+i] = all[idx];    
-        }
-    }
-}
-
-
-/* Calculates ratio for downsampling alignment data to the target 
+/* Calculates ratio for down-sampling sequence data to the target 
    depth of coverage
-   Args: Pu_chr* puc       - pointer to Pileup alignment info
-         double target_dp  - coverage after downsampling
-         Cov_dist* idist   - initial coverage distribution
-   Returns: the culling ratio */
-double find_cull_p(Pu_chr* puc, double target_dp, Cov_dist* idist) {
+   Args: Pu_chr* puc - pointer to Pileup data
+         double target_dp - coverage after down-sampling
+         Dpdist* idist - input coverage distribution
+   Returns: ratio for down-sampling */
+double find_cull_p(Pu_chr* puc, double target_dp, Dpdist* pu_dist) {
     double cull_p = 1;
-    size_t total_cov = 0;
+    unsigned long total_cov = 0;
 
-    // update initial distribution with coverage from Pileup line
+    // update input distribution with coverage from Pileup line
     for (int i = 0; i < puc->n_puls; i++) {
         unsigned int cov = puc->puls[i]->cov;
         if (cov <= USER_MAX_COV) {
             total_cov += cov;
-            idist->dist[cov]++;
+            pu_dist->dist[cov]++;
         }
     }
     double mean_cov = (double)total_cov / puc->n_puls;
-    idist->mean_cov = mean_cov;
+    pu_dist->mean_cov = mean_cov;
     if (!OPT_D) {
         return cull_p;
     }
@@ -154,10 +107,9 @@ double find_cull_p(Pu_chr* puc, double target_dp, Cov_dist* idist) {
 
 
 /* Determines whether a site is a SNP 
-   Args: const char* ref  - reference allele at this site 
-         const char* alt  - alternate allele at this site
-   Returns: 1 if site is single-polymorphic (not indel);
-            0 otherwise */
+   Args: const char* ref - reference allele at this site 
+         const char* alt - alternate allele at this site
+   Returns: 1 if site is single-polymorphic (not indel); 0 otherwise */
 int is_snp(const char* ref, const char* alt) {
     if ((strstr(BASES, ref) && strlen(ref) == 1) && 
         (strstr(BASES, alt) && strlen(alt) == 1)) {
@@ -168,8 +120,8 @@ int is_snp(const char* ref, const char* alt) {
 
 
 /* Performs down-sampling of alignment data at a single site
-   Args: unsigned int original_count  - initial base coverage at site 
-         double cull_p                - ratio for downsampling 
+   Args: unsigned int original_count - initial base coverage at site 
+         double cull_p - ratio for down-sampling
    Returns: down-sampled base coverage */
 unsigned int cull_dp(unsigned int original_count, double cull_p) {
     if (cull_p == 1.0) {
@@ -185,225 +137,594 @@ unsigned int cull_dp(unsigned int original_count, double cull_p) {
 }
 
 
-/* At each site, calculates the probabilities of observing alignment data under
-different IBD models given each possible genotype and stores those numbers in ptab 
-   Args: unsigned long** nCk  - pointer to the nchoosek matrix
-         Prob_sum** ptab      - pointer to probability info
-         Impute2* i2          - pointer to Impute genotype info
-         Pu_chr* puc          - pointer to Pileup alignment info
-         double target_dp     - coverage after downsampling
-         Cov_dist* idist      - initial coverage distribution 
-   Returns: culling depth probability */
-double do_pD_calc(unsigned long** nCk, Prob_sum** ptab, Impute2* i2,
-                  Pu_chr* puc, double target_dp, Cov_dist* idist) {
-    
-    int n = i2->n_sites; 
-    double cull_p = find_cull_p(puc, target_dp, idist);
+/* Prints input coverage distribution of the sequence data
+   Args: FILE* out - pointer to output file
+         Dpdist* pu_dist - input coverage distribution
+         double cull_p - ratio for down-sampling */
+void print_pu_dist(FILE* out, Dpdist* pu_dist, double cull_p) {
+    fprintf( out, "# INPUT COVERAGE DISTRIBUTION:\n" );
+    fprintf( out, "# COVERAGE N_SITES\n" );
+    for (int cov = 0; cov <= USER_MAX_COV; cov++) {
+        fprintf( out, "# %d %lu\n", cov, pu_dist->dist[cov] );
+    }
+    fprintf( out, "# MEAN DEPTH = %lf\n", pu_dist->mean_cov );
+    fprintf( out, "# CULL DEPTH RATIO = %lf\n", cull_p );
+}
 
-    for (int i = 0; i < n; i++) {
-        char* ref = i2->ref[i];
-        char* alt = i2->alt[i];
-        // not SNP? excluded from analysis
-        if (!is_snp(ref, alt)) {
-            ptab[i]->failed_filters = 1;
-            continue;
+
+/* Checks if site is biallelic (VCF)
+   Args: const char* alt - pointer to alternate allele string 
+   Returns: 1 if biallelic, 0 otherwise */
+int is_biallelic(const char* alt) {
+    // see if alt contains a comma
+    if (strchr(alt, ',') == NULL) {
+        return 1;
+    }
+    return 0;
+}
+
+
+/* Performs comparison using VCF input and outputs the results to 2 files:
+   (1) Table file (*.tab.txt) with information about each site and their
+       associated IBD0, IBD1, and IBD2 likelihoods (these likelihoods
+       are NOT calculated under LD mode, even with --LD option specified)
+   (2) Summary file (*.summary.txt) with likelihoods for models IBD0, IBD1,
+       and IBD2 aggregated over multiple sites, determined by --window-size
+       (these aggregated likelihoods would be calculated under LD mode
+       if --LD option was specified)
+
+   Args: File_Src* vcf_fp - pointer to VCF file
+         Comp_dt* data - pointer to comparison data
+         Pu_chr* puc - pointer to Pileup data
+         unsigned long** nCk - pointer to the nchoosek matrix
+         double target_dp - coverage after down-sampling
+         Dpdist* pu_dist - input coverage distribution
+         const char* out_dir - path to output directory
+         const char* user_cmd - entered user command
+   Returns: 0 on success; 1 if error */
+int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nCk,
+                double target_dp, Dpdist* pu_dist, const char* out_dir, const char* user_cmd) {
+
+    int pu_idx = -1;
+    Sampl* pu_sample = find_sample(data, SQ_ID);
+    if (pu_sample) {
+        pu_idx = pu_sample->idx;
+    }
+
+    double cull_p = find_cull_p(puc, target_dp, pu_dist);
+    if (!data->uids) {
+        data->uids = data->ids;
+        data->n_uids = data->n_ids;
+    }
+    if (!data->refids) {
+        data->refids = data->ids;
+        data->n_refids = data->n_ids;
+    }
+
+    regex_t regex;
+    int rc_flag = regcomp(&regex, "^[01][/|][01].*$", 0);
+    if (rc_flag) {
+        fprintf( stderr, "[::] ERROR in read_vcf(): Cannot compile regex to check genotype.\n" );
+        return 1;
+    }
+
+    for (int i = 0; i < data->n_uids; i++) {
+        fprintf( stderr, "Running %s-vs-%s comparison...\n", SQ_ID, data->uids[i].name );        
+        char line[MAX_LINE_LEN];
+        get_line_FS(vcf_fp, line);
+        while (strstr(line, "##") == line) {
+            get_line_FS(vcf_fp, line);
         }
+
+        char tab_fn[MAX_FN_LEN];
+        char sum_fn[MAX_FN_LEN];
+        sprintf( tab_fn, "%s/%s.%s.tab.txt", out_dir, SQ_ID, data->uids[i].name );
+        sprintf( sum_fn, "%s/%s.%s.summary.txt", out_dir, SQ_ID, data->uids[i].name );
+        FILE* tab_fp = fopen(tab_fn, "w");
+        FILE* sum_fp = fopen(sum_fn, "w");
+        if (!tab_fp || !sum_fp) {
+            fprintf( stderr, "[::] ERROR in compare_vcf(): Cannot open '%s' and/or '%s' for writing.\n", tab_fn, sum_fn );
+            return 1;
+        }
+        fprintf( tab_fp, "# Entered command: %s\n\n", user_cmd );
         
-        // QUAL field lower than specified? excluded from analysis
-        if (IN_VCF && USER_MIN_QUAL > 0) {
-            if (i2->qual[i] < USER_MIN_QUAL) {
-                ptab[i]->failed_filters = 1;
-                continue;
-            }
+        unsigned long processed = 0;
+        unsigned long skipped = 0;
+        print_pu_dist(tab_fp, pu_dist, cull_p);
+        unsigned long final_dist[USER_MAX_COV+1];
+        for (int cov = 0; cov < USER_MAX_COV+1; cov++) {
+            final_dist[cov] = 0;
         }
+        unsigned long final_total_cov = 0;
 
-        unsigned long pos = i2->pos[i];
-        if (OPT_P) {
-            // not a user-specified site? excluded from analysis
-            if (!site_in_upos(i2, pos)) {
-                ptab[i]->failed_filters = 1;
-                continue;
-            }
-        }
-        Pul* pul = fetch_Pul(puc, pos);
-        // not found in Pileup? excluded from analysis
-        if (!pul) {
-            ptab[i]->failed_filters = 1;
-            continue;
-        }
+        fprintf( tab_fp, "# CHR\trsID\tPOS\tREF\tALT\tAF\tDP\tSQ_NREF\tSQ_NALT\tGT_A0\tGT_A1\tLIBD0\tLIBD1\tLIBD2\n" );
+        fprintf( sum_fp, "# SEGMENT\tSTART\tEND\tLIBD0\tLIBD1\tLIBD2\tNUM_SITES\n" );
 
-        double f;
-        if (OPT_A) {
-            Freq* fp = fetch_freq(i2, pos);
-            if (!fp) {
-                // if not found, calculate from genotypes
-                f = find_f(i2, i);
+        unsigned int cmp_idx = data->uids[i].idx;
+
+        int sgmt_count = 1;
+        get_line_FS(vcf_fp, line);
+        char* read_vcf_res = &line[0];
+        while (read_vcf_res) {
+            int snp_count = 0;
+            unsigned long sgmt_start, sgmt_end, previous_pos;
+
+            double sum_ibd0 = 1, sum_ibd1 = 1, sum_ibd2 = 1;
+            double sum_ibd2_ref[data->n_refids];
+            for (int j = 0; j < data->n_refids; j++) {
+                sum_ibd2_ref[j] = 1;
+            }
+
+            while (snp_count < WINDOWSIZE) {
+                read_vcf_res = get_line_FS(vcf_fp, line);
+                if (!read_vcf_res) {
+                    sgmt_end = previous_pos;
+                    break;
+                }
+                unsigned long pos;
+                double f;
+                char id[512], ref[512], alt[512], qual[512], fltr[512], info[7680];
+                char gt[MAX_LINE_LEN];
+                
+                if (sscanf(line, "%*s %lu %512[^\t] %512[^\t] %512[^\t] %512[^\t] %512[^\t] %7680[^\t] %30720[^\n]",
+                    &pos, id, ref, alt, qual, fltr, info, gt) == 8) {
+                    // skip site if not biallelic        
+                    if (!is_biallelic(alt)) {
+                        skipped++;
+                        continue;
+                    }
+                    unsigned short* alleles = malloc((data->n_ids*2) * sizeof(unsigned short));
+                    int parse_gt_res = vcf_parse_gt(gt, regex, data->n_ids, alleles);
+                    if (parse_gt_res) {
+                        fprintf( stderr, "Failed to parse genotype fields at %lu. Skipping to next site.\n", pos );
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    if (OPT_V && alleles[cmp_idx] == 0 && alleles[cmp_idx+1] == 0) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    if ( !is_snp(ref, alt) ) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    if ( atof(qual) < USER_MIN_QUAL ) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    Pul* pul = fetch_Pul(puc, pos);
+                    if (!pul) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    if (OPT_P && !site_in_upos(data, pos)) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    f = find_f_vcf(alleles, data->n_ids);
+                    if (OPT_A) {
+                        Freq* fp = fetch_freq(data, pos);
+                        if (fp) {
+                            f = fp->f;
+                        }
+                    }
+                    if (f > USER_MAX_AF || f < USER_MIN_AF) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    unsigned int n_ref = count_base_from_pul(pul, ref[0]);
+                    unsigned int n_alt = count_base_from_pul(pul, alt[0]);
+                    if (n_ref+n_alt > USER_MAX_COV) {
+                        free(alleles);
+                        skipped++;
+                        continue;
+                    }
+                    n_ref = cull_dp(n_ref, cull_p);
+                    n_alt = cull_dp(n_alt, cull_p);
+                    final_total_cov += (n_ref + n_alt);
+                    final_dist[n_ref+n_alt]++;
+
+                    double pDg00 = find_pDgG(nCk, EPSILON, 0, 0, n_ref, n_alt);
+                    double pDg01 = find_pDgG(nCk, EPSILON, 0, 1, n_ref, n_alt);
+                    double pDg11 = find_pDgG(nCk, EPSILON, 1, 1, n_ref, n_alt);
+                
+                    unsigned short A0, A1;
+                    double ibd0 = 1, ibd1 = 1, ibd2 = 1;
+                    A0 = alleles[cmp_idx];
+                    A1 = alleles[cmp_idx+1];
+                
+                    ibd0 = find_pDgf(f, pDg00, pDg01, pDg11);
+                    ibd1 = find_pDgIBD1(A0, A1, f, pDg00, pDg01, pDg11);
+                    if (A0 == 0 && A1 == 0) {
+                        ibd2 = pDg00;
+                    }
+                    else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
+                        ibd2 = pDg01;
+                    }
+                    else if (A0 == 1 && A1 == 1) {
+                        ibd2 = pDg11;
+                    }
+                    if (n_ref+n_alt < 1) {
+                        fprintf( tab_fp, "%s\t%s\t%lu\t%s\t%s\t%lf\t%u\t%u\t%u\t%hu\t%hu\t%e\t%e\t%e\n", 
+                                 pul->chr, id, pos, ref, alt, f, pul->cov, n_ref, n_alt, 
+                                 A0, A1, ibd0, ibd1, ibd2 ); 
+                        processed++;
+                        free(alleles);
+                        continue;
+                    }
+                
+                    sum_ibd0 *= ibd0;
+                    sum_ibd1 *= ibd1;
+                    sum_ibd2 *= ibd2;
+
+                    if (LD_MODE) {
+                        for (int n = 0; n < data->n_refids; n++) {
+                            double ref_ibd2;
+                            int ref_idx = data->refids[n].idx;
+                            A0 = alleles[n*2];
+                            A1 = alleles[(n*2)+1];
+                            if (A0 == 0 && A1 == 0) {
+                                ref_ibd2 = pDg00;
+                            }
+                            else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
+                                ref_ibd2 = pDg01;
+                            }
+                            else if (A0 == 1 && A1 == 1) {
+                                ref_ibd2 = pDg11;
+                            }
+                            if (ref_idx != pu_idx) {
+                                sum_ibd2_ref[n] *= ref_ibd2;
+                            }
+                        }
+                    }
+                    snp_count++;
+                    previous_pos = pos;
+                    if (snp_count == 1) {
+                        sgmt_start = pos;
+                    }
+                    else if (snp_count == WINDOWSIZE) {
+                        sgmt_end = previous_pos;
+                    }
+                    fprintf( tab_fp, "%s\t%s\t%lu\t%s\t%s\t%lf\t%u\t%u\t%u\t%hu\t%hu\t%e\t%e\t%e\n", 
+                             pul->chr, id, pos, ref, alt, f, pul->cov, n_ref, n_alt, 
+                             alleles[cmp_idx], alleles[cmp_idx+1], ibd0, ibd1, ibd2 ); 
+                    processed++;
+                    free(alleles);
+                }   
+                else {
+                    skipped++;
+                }
+            }
+            int n_refpanel = data->n_refids;
+            if (LD_MODE) {
+                double sum_ibd0_LD = 0;
+                for (int k = 0; k < data->n_refids; k++) {
+                    if (data->refids[k].idx != pu_idx) {
+                        sum_ibd0_LD += sum_ibd2_ref[k];
+                    }
+                    else {
+                        n_refpanel--;
+                    }
+                }
+                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1, sum_ibd2, snp_count );
             }
             else {
-                f = fp->f;
+                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                         sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
             }
+            sgmt_count++;
+        }    
+        fprintf( tab_fp, "# FINAL COVERAGE DISTRIBUTION:\n" );
+        fprintf( tab_fp, "# COVERAGE N_SITES\n" );
+        for (int cov = 0; cov < USER_MAX_COV+1; cov++) {
+            fprintf( tab_fp, "# %d %lu\n", cov, final_dist[cov] );
         }
-        else {
-            f = find_f(i2, i);
-        }
-        // allele frequency higher or lower than specified?
-        // excluded from analysis
-        if (f > USER_MAX_AF || f < USER_MIN_AF) {
-            ptab[i]->failed_filters = 1;
-            continue;
-        }
-           
-        unsigned int cov = pul->cov;
-        unsigned int n_ref = count_base_from_pul(pul, ref[0]);
-        unsigned int n_alt = count_base_from_pul(pul, alt[0]);
-        // number of observed bases higher than max coverage?
-        // u know the drill
-        if (n_ref+n_alt > USER_MAX_COV) {
-            ptab[i]->failed_filters = 1;
-            continue;
-        }
-
-        // store these info for later outputting to file
-        n_ref = cull_dp(n_ref, cull_p);
-        n_alt = cull_dp(n_alt, cull_p);
-        double pD_g_00 = find_pDgG(nCk, EPSILON, 0, 0, n_ref, n_alt);
-        double pD_g_01 = find_pDgG(nCk, EPSILON, 0, 1, n_ref, n_alt);
-        double pD_g_11 = find_pDgG(nCk, EPSILON, 1, 1, n_ref, n_alt);
-
-        ptab[i]->pD_g_ibd0_f  = find_pDgf(f, pD_g_00, pD_g_01, pD_g_11);
-        ptab[i]->pD_g_ibd1_00 = find_pDgIBD1(0, 0, f, pD_g_00, pD_g_01, pD_g_11);
-        ptab[i]->pD_g_ibd1_01 = find_pDgIBD1(0, 1, f, pD_g_00, pD_g_01, pD_g_11);
-        ptab[i]->pD_g_ibd1_11 = find_pDgIBD1(1, 1, f, pD_g_00, pD_g_01, pD_g_11);
-        ptab[i]->pD_g_ibd2_00 = pD_g_00;
-        ptab[i]->pD_g_ibd2_01 = pD_g_01;
-        ptab[i]->pD_g_ibd2_11 = pD_g_11;
-        
-        ptab[i]->dp = cov;
-        ptab[i]->f = f;
-        ptab[i]->n_ref = n_ref;
-        ptab[i]->n_alt = n_alt;
+        fprintf( tab_fp, "# FINAL MEAN DEPTH = %lf\n", (double)final_total_cov/processed );
+        fprintf( tab_fp , "## Number of sites processed: %lu\n", processed);
+        fprintf( tab_fp, "## Number of sites skipped: %lu\n", skipped);
+        fclose(tab_fp);
+        fclose(sum_fp);
+        regfree(&regex);
+        rewind_FS(vcf_fp);
     }
-    return cull_p;
+    return 0;
 }
+            
 
+/* Performs comparison using IMPUTE input and outputs the results to 2 files:
+   (1) Table file (*.tab.txt) with information about each site and their
+       associated IBD0, IBD1, and IBD2 likelihoods (these likelihoods
+       are NOT calculated under LD mode, even with --LD option specified)
+   (2) Summary file (*.summary.txt) with likelihoods for models IBD0, IBD1,
+       and IBD2 aggregated over multiple sites, determined by --window-size
+       (these aggregated likelihoods would be calculated under LD mode
+       if --LD option was specified)
 
-/* Performs comparison between alignment data and the genotype data of given samples;
-this function is to be run by each thread */
-void* do_compare(void* args) {
-    
-    Comp_args* cargs = (Comp_args*)args;
-    Impute2* i2 = cargs->i2;
-    Sampl* samples = cargs->samples;
-    Prob_sum** ptab = cargs->ptab;
-    int n_samples = cargs->n_samples;
-    double cull_p = cargs->cull_p;
-    Cov_dist* idist = cargs->dist;
-    
-    for (int i = 0; i < n_samples; i++) {
+   Args: File_Src* hap_fp - pointer to .hap file
+         File_Src* legend_fp - pointer to .legend file
+         Comp_dt* data - pointer to comparison data
+         Pu_chr* puc - pointer to Pileup data
+         unsigned long** nCk - pointer to the nchoosek matrix
+         double target_dp - coverage after down-sampling
+         Dpdist* pu_dist - input coverage distribution
+         const char* out_dir - path to output directory
+         const char* user_cmd - entered user command
+   Returns: 0 on success; 1 if error */
+int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nCk,
+                   double target_dp, Dpdist* pu_dist, const char* out_dir, const char* user_cmd) {
 
-        // go to the specified output dir
-        char out_fn[MAX_FN_LEN];
-        sprintf( out_fn, "%s.%s.txt", SQ_ID, samples[i].name );
-        FILE* fp = fopen(out_fn, "w");
-        if (!fp) {
-            fprintf( stderr, "[::] ERROR in do_compare(): Failed to open %s.\n", out_fn );
-            exit(1);
-        }
-
-        int idx = samples[i].idx;
-        double libd0, libd1, libd2;
-
-        // print command line arguments
-        fprintf( fp, "# Entered command: %s\n\n", cargs->str_cmd );
-        
-        // print the original coverage distribution of Pu sites
-        fprintf( fp, "# INITAL COVERAGE DISTRIBUTION:\n" );
-        fprintf( fp, "# COVERAGE N_SITES\n" );
-        for (int cov = 0; cov <= USER_MAX_COV; cov++) {
-            fprintf( fp, "# %d %lu\n", cov, idist->dist[cov] );
-        }
-        fprintf( fp, "# MEAN DEPTH = %lf\n", idist->mean_cov );
-        fprintf( fp, "# CULL DEPTH RATIO = %lf\n", cull_p );
-
-        // initialize final coverage distribution
-        unsigned long fdist[USER_MAX_COV+1];
-        for (int i = 0; i <= USER_MAX_COV; i++) {
-            fdist[i] = 0;
-        }
-        size_t final_total_cov = 0;
-        size_t final_nsites = 0;
-
-        fprintf( fp, "# POS\tREF\tALT\trsID\tAF\tDP\tGT_A0\tGT_A1\tSQ_NREF\tSQ_NALT\tLIBD0\tLIBD1\tLIBD2\n" );
-        for (int i = 0; i < i2->n_sites; i++) {
-        
-            unsigned short A0 = *(i2->haps[i]+idx);
-            unsigned short A1 = *(i2->haps[i]+(idx+1));
-            if (OPT_V && A0 == 0 && A1 == 0) {
-                continue; // if -v on, skip homozygous REF sites
-            }
-
-            if (ptab[i]->failed_filters) {
-                continue; // not SNP, no Pu data or too high cov
-            }
-
-            libd0 = ptab[i]->pD_g_ibd0_f;
-            if (A0 == 0 && A1 == 0) {
-                libd1 = ptab[i]->pD_g_ibd1_00;
-                libd2 = ptab[i]->pD_g_ibd2_00;
-            }
-            else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
-                libd1 = ptab[i]->pD_g_ibd1_01;
-                libd2 = ptab[i]->pD_g_ibd2_01;
-            }
-            else if (A0 == 1 && A1 == 1)  {
-                libd1 = ptab[i]->pD_g_ibd1_11;
-                libd2 = ptab[i]->pD_g_ibd2_11;
-            }
-                   
-            fprintf( fp, "%zu\t%s\t%s\t%s\t%lf\t%u\t%u\t%u\t%u\t%u\t%e\t%e\t%e\n",
-                     i2->pos[i], i2->ref[i], i2->alt[i], i2->ids[i], ptab[i]->f, ptab[i]->dp, 
-                     A0, A1, ptab[i]->n_ref, ptab[i]->n_alt, libd0, libd1, libd2 );         
-                    
-            fdist[ptab[i]->n_ref + ptab[i]->n_alt]++;
-            final_total_cov += (ptab[i]->n_ref + ptab[i]->n_alt);
-		    final_nsites++;
-        }
-    
-        // print the final coverage distribution
-        fprintf( fp, "# FINAL COVERAGE DISTRIBUTION:\n" );
-        fprintf( fp, "# COVERAGE N_SITES\n" );
-        for (int cov = 0; cov <= USER_MAX_COV; cov++) {
-            fprintf( fp, "# %d %lu\n", cov, fdist[cov] );
-        }
-        fprintf( fp, "# FINAL MEAN DEPTH = %lf\n", (double)final_total_cov / final_nsites );
-        fclose(fp);
+    int pu_idx = -1;
+    // check to see if the subject individual is also in reference panel
+    Sampl* pu_sample = find_sample(data, SQ_ID);
+    if (pu_sample) {
+        pu_idx = pu_sample->idx;
     }
-    pthread_exit(NULL);
-}
+
+    double cull_p = find_cull_p(puc, target_dp, pu_dist);
+    // if subset of samples to compare not specified,
+    // compare against all individuals in VCF
+    if (!data->uids) {
+        data->uids = data->ids;
+        data->n_uids = data->n_ids;
+    }
+    // if reference panel not specified, use
+    // all individuals in VCF as reference
+    if (!data->refids) {
+        data->refids = data->ids;
+        data->n_refids = data->n_ids;
+    }
+
+    for (int i = 0; i < data->n_uids; i++) {
+        fprintf( stderr, "Running %s-vs-%s comparison...\n", SQ_ID, data->uids[i].name );
+        
+        char tab_fn[MAX_FN_LEN]; // output file with IBD likelihoods per site
+        char sum_fn[MAX_FN_LEN];  // output file with IBD likelihoods per genomic segment
+        sprintf( tab_fn, "%s/%s.%s.tab.txt", out_dir, SQ_ID, data->uids[i].name );
+        sprintf( sum_fn, "%s/%s.%s.summary.txt", out_dir, SQ_ID, data->uids[i].name );
+        FILE* tab_fp = fopen(tab_fn, "w");
+        FILE* sum_fp = fopen(sum_fn, "w");
+        if (!tab_fp || !sum_fp) {
+            fprintf( stderr, "[::] ERROR in compare_impute(): Cannot open '%s' and/or '%s' for writing.\n", tab_fn, sum_fn );
+            return 1;
+        }
+        fprintf( tab_fp, "# Entered command: %s\n\n", user_cmd );
+        
+        unsigned long processed = 0;
+        unsigned long skipped = 0;
+        // print original coverage distribution of sequence data
+        print_pu_dist(tab_fp, pu_dist, cull_p);
+        unsigned long final_dist[USER_MAX_COV+1];
+        for (int cov = 0; cov < USER_MAX_COV+1; cov++) {
+            final_dist[cov] = 0;
+        }
+        unsigned long final_total_cov = 0;
+        
+        fprintf( tab_fp, "# CHR\trsID\tPOS\tREF\tALT\tAF\tDP\tSQ_NREF\tSQ_NALT\tGT_A0\tGT_A1\tLIBD0\tLIBD1\tLIBD2\n" );
+        fprintf( sum_fp, "# SEGMENT\tSTART\tEND\tLIBD0\tLIBD1\tLIBD2\tNUM_SITES\n" );
+
+        unsigned int cmp_idx = data->uids[i].idx; // index position of compared sample
+        char hap_buf[MAX_LINE_LEN];
+        char legend_buf[MAX_LINE_LEN];
+        
+        int sgmt_count = 1;
+        get_line_FS(legend_fp, legend_buf); // skip header in legend file
+        char* read_hap_res = &hap_buf[0];
+        char* read_legend_res = &legend_buf[0];
+        while (read_hap_res && read_legend_res) {
+            int snp_count = 0;
+            unsigned long sgmt_start, sgmt_end, previous_pos;
+            
+            double sum_ibd0 = 1, sum_ibd1 = 1, sum_ibd2 = 1;
+            double sum_ibd2_ref[data->n_refids];
+            for (int j = 0; j < data->n_refids; j++) {
+                sum_ibd2_ref[j] = 1;
+            }
+
+            while (snp_count < WINDOWSIZE) {
+                read_hap_res = get_line_FS(hap_fp, hap_buf);
+                read_legend_res = get_line_FS(legend_fp, legend_buf);
+                if (!read_hap_res || !read_legend_res) {
+                    sgmt_end = previous_pos;
+                    break;
+                }
+                unsigned long pos;
+                double f;
+                char id[128], ref[128], alt[128];
+                
+                // check if homozygous ref in compared sample
+                if (OPT_V && hap_buf[cmp_idx*2] == '0' && hap_buf[(cmp_idx*2)+2] == '0') {
+                    skipped++;
+                    continue;
+                }
+                // check if legend line looks good
+                if ( sscanf(legend_buf, "%128s %lu %128s %128s", id, &pos, ref, alt) != 4 ) {
+                    skipped++;
+                    continue;
+                }
+                if ( !is_snp(ref, alt) ) { // check if site is SNP
+                    skipped++;
+                    continue;
+                }
+                // check if site has data in Pileup
+                Pul* pul = fetch_Pul(puc, pos);
+                if (!pul) {
+                    skipped++;
+                    continue;
+                }
+                // check if site is in user-specified list
+                if (OPT_P && !site_in_upos(data, pos)) {
+                    skipped++;
+                    continue;
+                }
+                f = find_f_impute(hap_buf, data->n_ids);
+                if (OPT_A) {
+                    Freq* fp = fetch_freq(data, pos);
+                    if (fp) {
+                        f = fp->f;
+                    }
+                }
+                // check if AF is within specified range
+                if (f > USER_MAX_AF || f < USER_MIN_AF) {
+                    skipped++;
+                    continue;
+                }
+                unsigned int n_ref = count_base_from_pul(pul, ref[0]);
+                unsigned int n_alt = count_base_from_pul(pul, alt[0]);
+                // check if site coverage is under specified maximum
+                if (n_ref+n_alt > USER_MAX_COV) {
+                    skipped++;
+                    continue;
+                }
+                n_ref = cull_dp(n_ref, cull_p);
+                n_alt = cull_dp(n_alt, cull_p);
+                final_total_cov += (n_ref + n_alt);
+                final_dist[n_ref+n_alt]++;
+
+                double pDg00 = find_pDgG(nCk, EPSILON, 0, 0, n_ref, n_alt);
+                double pDg01 = find_pDgG(nCk, EPSILON, 0, 1, n_ref, n_alt);
+                double pDg11 = find_pDgG(nCk, EPSILON, 1, 1, n_ref, n_alt);
+                
+                unsigned short A0, A1;
+                double ibd0 = 1, ibd1 = 1, ibd2 = 1;
+                A0 = hap_buf[cmp_idx*2]-'0';
+                A1 = hap_buf[(cmp_idx*2)+2]-'0';
+                
+                ibd0 = find_pDgf(f, pDg00, pDg01, pDg11);
+                ibd1 = find_pDgIBD1(A0, A1, f, pDg00, pDg01, pDg11);
+                if (A0 == 0 && A1 == 0) {
+                    ibd2 = pDg00;
+                }
+                else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
+                    ibd2 = pDg01;
+                }
+                else if (A0 == 1 && A1 == 1) {
+                    ibd2 = pDg11;
+                }
+
+                // if no data left after down-sampling,
+                // still mark site as processed & include
+                // in final coverage distribution/per-site output,
+                // but skip when aggregating likelihoods
+                if (n_ref+n_alt < 1) {
+                    fprintf( tab_fp, "%s\t%s\t%lu\t%s\t%s\t%lf\t%u\t%u\t%u\t%hu\t%hu\t%e\t%e\t%e\n", 
+                             pul->chr, id, pos, ref, alt, f, pul->cov, n_ref, n_alt, 
+                             A0, A1, ibd0, ibd1, ibd2 ); 
+                    processed++;
+                    continue;
+                }
+                
+                sum_ibd0 *= ibd0;
+                sum_ibd1 *= ibd1; 
+                sum_ibd2 *= ibd2;
+
+                if (LD_MODE) {
+                    // compare data to each sample in ref panel,
+                    // skip if individual matches Pileup name provided via -N
+                    // (to avoid including self in background calculation)
+                    for (int n = 0; n < data->n_refids; n++) {
+                        double ref_ibd2;
+                        int ref_idx = data->refids[n].idx;
+                        A0 = hap_buf[ref_idx*2]-'0';
+                        A1 = hap_buf[(ref_idx*2)+2]-'0';
+                        if (A0 == 0 && A1 == 0) {
+                            ref_ibd2 = pDg00;
+                        }
+                        else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
+                            ref_ibd2 = pDg01;
+                        }
+                        else if (A0 == 1 && A1 == 1) {
+                            ref_ibd2 = pDg11;
+                        }
+                        if (ref_idx != pu_idx) {
+                            sum_ibd2_ref[n] *= ref_ibd2;
+                        }
+                    }
+                }
+                snp_count++;
+                previous_pos = pos;
+                if (snp_count == 1) {
+                    sgmt_start = pos;
+                }
+                else if (snp_count == WINDOWSIZE) {
+                    sgmt_end = previous_pos;
+                }
+                fprintf( tab_fp, "%s\t%s\t%lu\t%s\t%s\t%lf\t%u\t%u\t%u\t%c\t%c\t%e\t%e\t%e\n", 
+                                   pul->chr, id, pos, ref, alt, f, pul->cov, n_ref, n_alt, 
+                                   hap_buf[cmp_idx*2], hap_buf[(cmp_idx*2)+2], ibd0, ibd1, ibd2 ); 
+                processed++;
+            }
+            int n_refpanel = data->n_refids; // number of reference samples
+            if (LD_MODE) {
+                // take average of IBD2 likelihoods over all ref samples
+                double sum_ibd0_LD = 0;
+                for (int k = 0; k < data->n_refids; k++) {
+                    if (data->refids[k].idx != pu_idx) {
+                        sum_ibd0_LD += sum_ibd2_ref[k];
+                    }
+                    else {
+                        n_refpanel--;
+                    }
+                }
+                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1, sum_ibd2, snp_count );
+            }
+            else {
+                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                         sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
+            }
+            sgmt_count++;
+        }
+        fprintf( tab_fp, "# FINAL COVERAGE DISTRIBUTION:\n" );
+        fprintf( tab_fp, "# COVERAGE N_SITES\n" );
+        for (int cov = 0; cov < USER_MAX_COV+1; cov++) {
+            fprintf( tab_fp, "# %d %lu\n", cov, final_dist[cov] );
+        }
+        fprintf( tab_fp, "# FINAL MEAN DEPTH = %lf\n", (double)final_total_cov/processed );
+        fprintf( tab_fp , "## Number of sites processed: %lu\n", processed );
+        fprintf( tab_fp, "## Number of sites skipped: %lu\n", skipped );
+        fclose(tab_fp);
+        fclose(sum_fp);
+        rewind_FS(hap_fp);
+        rewind_FS(legend_fp);
+    }
+    return 0;
+}   
 
 
 /* Prints help message */
 void print_help(int code) {
-    fprintf( stderr, "IBDGem: Compares low-coverage sequencing data from an unknown sample to known genotypes\n" );
-    fprintf( stderr, "        from a reference individual/panel and calculates the likelihood that the samples\n" );
-    fprintf( stderr, "        share 0, 1, or 2 IBD chromosomes.\n\n" );
-    fprintf( stderr, "Usage: ./ibdgem -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]\n" );
-    fprintf( stderr, "       OR ./ibdgem -V [vcf-file] -P [pileup-file] [other options...]\n" );
+    fprintf( stderr, "IBDGem-2.0: Compares low-coverage sequencing data from an unknown sample to known genotypes\n" );
+    fprintf( stderr, "            from a reference individual/panel and calculates the likelihood that the samples\n" );
+    fprintf( stderr, "            share 0, 1, or 2 IBD chromosomes.\n\n" );
+    fprintf( stderr, "Usage: ./ibdgem [--LD] -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-file] [other options...]\n" );
+    fprintf( stderr, "       OR ./ibdgem [--LD] -V [vcf-file] -P [pileup-file] [other options...]\n" );
+    fprintf( stderr, "--LD                            Linkage disequilibrium mode ON (default: OFF)\n" );
     fprintf( stderr, "-V, --vcf  FILE                 VCF file (required if using VCF)\n" );
     fprintf( stderr, "-H, --hap  FILE                 HAP file (required if using IMPUTE)\n" );
     fprintf( stderr, "-L, --legend  FILE              LEGEND file (required if using IMPUTE)\n" );
     fprintf( stderr, "-I, --indv  FILE                INDV file (required if using IMPUTE)\n" );
     fprintf( stderr, "-P, --pileup  FILE              PILEUP file (required)\n" );
-    fprintf( stderr, "-N, --pileup-name  STR          Name of individual in Pileup (default: UNKWN)\n" );
-    fprintf( stderr, "-A, --allele-freqs  FILE        File containing allele frequencies from an external panel;\n" );
+    fprintf( stderr, "-N, --pileup-name  STR          Name of Pileup sample (default: UNKWN)\n" );
+    fprintf( stderr, "-A, --allele-freqs  FILE        File containing allele frequencies from a background panel;\n" );
     fprintf( stderr, "                                   must be sorted & whitespace-delimited with columns CHROM, POS, AF;\n" );
     fprintf( stderr, "                                   use in conjunction with -c if includes multiple chromosomes\n" );
     fprintf( stderr, "                                   (default: calculate AF from input genotypes)\n" );
     fprintf( stderr, "-S, --sample-list  FILE         File containing subset of samples to compare the\n" );
     fprintf( stderr, "                                   sequencing data against; one line per sample\n" );
-    fprintf( stderr, "                                   (default: compare against all samples in genotype panel)\n" );
+    fprintf( stderr, "                                   (default: compare against all samples in genotype file)\n" );
     fprintf( stderr, "-s, --sample  STR               Sample(s) to compare the sequencing data against; comma-separated\n" );
     fprintf( stderr, "                                   without spaces if more than one (e.g. sample1,sample2,etc.)\n" );
+    fprintf( stderr, "-B, --background-list  FILE     File containing subset of samples to be used as the background panel\n" );
+    fprintf( stderr, "                                   for calculating IBD0 in LD mode; one line per sample\n" );
+    fprintf( stderr, "                                   (default: use all samples in genotype file as background)\n" );
     fprintf( stderr, "-p, --positions  FILE           List of sites to compare; can be in position list format with 2 columns\n" );
     fprintf( stderr, "                                   CHROM, POS (1-based coordinates) or BED format (0-based coordinates);\n" );
     fprintf( stderr, "                                   use in conjunction with -c if includes multiple chromosomes\n" );
@@ -413,17 +734,19 @@ void print_help(int code) {
     fprintf( stderr, "-F, --max-af  FLOAT             Maximum alternate allele frequency (default: 1)\n" );
     fprintf( stderr, "-f, --min-af  FLOAT             Minimum alternate allele frequency (default: 0)\n" );
     fprintf( stderr, "-D, --downsample-cov  FLOAT     Down-sample to this fold-coverage depth\n" );
+    fprintf( stderr, "-w, --window-size  INT          Number of sites per genomic segment over which likelihood results\n" ); 
+    fprintf( stderr, "                                   are summarized/aggregated (default: 100)\n" );
     fprintf( stderr, "-O, --out-dir  STR              Path to output directory (default: output to current directory)\n" );
     fprintf( stderr, "-c, --chromosome  STR           Chromosome on which the comparison is done; if not specified,\n" );
     fprintf( stderr, "                                   will assume that all inputs are on one single chromosome\n" );
-    fprintf( stderr, "-t, --threads  INT              Number of threads; only recommended when number of samples to compare\n" );
-    fprintf( stderr, "                                   exceeds 10,000 (default: 1)\n" );
     fprintf( stderr, "-e, --error-rate  FLOAT         Error rate of sequencing platform (default: 0.02)\n" );
-    fprintf( stderr, "-v, --variable-sites-only       If set, make output only for sites that have >=1\n" );
-    fprintf( stderr, "                                   alternate alleles in genotype file for this sample\n" );
+    fprintf( stderr, "-v, --variable-sites-only       If set, make output only for sites that are not\n" );
+    fprintf( stderr, "                                   homozygous reference in the genotype file for this sample\n" );
     fprintf( stderr, "-h, --help                      Show this help message and exit\n\n" );
-    fprintf( stderr, "Format of output table is tab-delimited with columns:\n" );
-    fprintf( stderr, "POS, REF, ALT, rsID, AF, DP, GT_A0, GT_A1, SQ_NREF, SQ_NALT, LIBD0, LIBD1, LIBD2\n" );
+    fprintf( stderr, "Format of likelihood table is tab-delimited with columns:\n" );
+    fprintf( stderr, "CHR, rsID, POS, REF, ALT, AF, DP, SQ_NREF, SQ_NALT, GT_A0, GT_A1, LIBD0, LIBD1, LIBD2\n\n" );
+    fprintf( stderr, "Format of summary file is tab-delimited with columns:\n" );
+    fprintf( stderr, "SEGMENT, START, END, LIBD0, LIBD1, LIBD2, NUM_SITES\n" );
     exit(code);
 }
 
@@ -436,18 +759,18 @@ int main(int argc, char* argv[]) {
     start = clock();
 
     int option;
-    char* opts = ":V:H:L:I:P:N:A:S:s:p:q:M:F:f:D:O:c:t:e:vh";
+    char* opts = ":V:H:L:I:P:w:N:A:S:s:B:p:q:M:F:f:D:O:c:e:vh";
 
-    Impute2* i2 = NULL;
     char vcf_fn[MAX_FN_LEN];
     char hap_fn[MAX_FN_LEN];
     char legend_fn[MAX_FN_LEN];
     char indv_fn[MAX_FN_LEN];
     char pu_fn[MAX_FN_LEN];
     char sample_fn[MAX_FN_LEN];
+    char ref_fn[MAX_FN_LEN];
     char af_fn[MAX_FN_LEN];
     char pos_fn[MAX_FN_LEN];
-    char str_cmd[MAX_FIELD_WIDTH];
+    char user_cmd[MAX_FIELD_WIDTH];
     char* sample_str;
     char* out_dir;
     char* uchr = NULL;
@@ -465,8 +788,11 @@ int main(int argc, char* argv[]) {
         // manually set output dir to current working dir
         out_dir = "./";
     }
+
     while ( (option = getopt_long(argc, argv, opts, longopts, NULL)) != -1 ) {
         switch (option) {
+            case 0:
+                break;
             case 'V':
                 IN_VCF = 1;
                 strcpy(vcf_fn, optarg);
@@ -486,6 +812,9 @@ int main(int argc, char* argv[]) {
             case 'P':
                 strcpy(pu_fn, optarg);
                 break;
+            case 'w':
+                WINDOWSIZE = atoi(optarg);
+                break;
             case 'N':
                 SQ_ID = optarg;
                 break;
@@ -496,6 +825,10 @@ int main(int argc, char* argv[]) {
             case 's':
                 OPT_S2 = 1;
                 sample_str = optarg;
+                break;
+            case 'B':
+                OPT_B = 1;
+                strcpy(ref_fn, optarg);
                 break;
             case 'A':
                 OPT_A = 1;
@@ -519,9 +852,6 @@ int main(int argc, char* argv[]) {
                 break;
             case 'c':
                 uchr = optarg;
-                break;
-            case 't':
-                NUM_THREADS = atoi(optarg);
                 break;
             case 'e':
                 EPSILON = atof(optarg);
@@ -577,151 +907,192 @@ int main(int argc, char* argv[]) {
         fprintf( stderr, "[::] ERROR: Invalid genotype quality minimum (-q) of %.2f (must be >= 0).\n", USER_MIN_QUAL );
         exit(0);
     }
+    if ( WINDOWSIZE < 2 ) {
+        fprintf( stderr, "[::] ERROR: Invalid window size (-w) of %d (must be >= 2).\n", WINDOWSIZE );
+        exit(0);
+    }
 
-    // first copy the first argument into str_cmd to initialize it
-    strcpy(str_cmd, argv[0]);
-    strcat(str_cmd, " ");
+    // first copy the first argument into user_cmd to initialize it
+    strcpy(user_cmd, argv[0]);
+    strcat(user_cmd, " ");
     for (int i = 1; i < argc; i++) {
-        strcat(str_cmd, argv[i]);
-        strcat(str_cmd, " ");
+        strcat(user_cmd, argv[i]);
+        strcat(user_cmd, " ");
     }
 
-    if (IN_VCF && IN_IMPUTE) {
-        fprintf( stderr, "[::] WARNING: 2 types of genotype input detected. Ignoring IMPUTE and processing VCF...\n" );
-        i2 = init_vcf(vcf_fn);
-    }
-    else if (IN_VCF) {
-        i2 = init_vcf(vcf_fn);
-    }
-    else if (IN_IMPUTE) {
-        i2 = init_I2(hap_fn, legend_fn, indv_fn);
-    }
     Pu_chr* puc = init_Pu_chr(pu_fn, uchr);
-    if (!i2 || !puc) {
-        fprintf( stderr, "[::] ERROR parsing genotype and/or sequence files; make sure paths are valid.\n" );
+    if (!puc) {
+        destroy_Pu_chr(puc);
+        fprintf( stderr, "[::] ERROR parsing Pileup data; make sure input is valid.\n" );
         exit(1);
     }
-    
-    int n_samples = i2->n_haps/2;
-    // if user provides file with names of samples to compare,
-    //    overwrite i2->samples with that subset
-    // if not, will do comparison for every sample in panel
-    if (OPT_S1) { 
-        n_samples = read_sf(i2, sample_fn);
-        if (n_samples == -1) {
-            destroy_I2(i2);
-            destroy_Pu_chr(puc);
-            exit(1);
-        }
-    }
 
-    if (OPT_S2) {
-        n_samples = read_scmd(i2, sample_str);
-        if (n_samples == -1) {
-            destroy_I2(i2);
-            destroy_Pu_chr(puc);
-            exit(1);
-        }
-    }
-
+    Comp_dt* data = malloc(sizeof(Comp_dt));
+    data->uids = NULL;
+    data->refids = NULL;
+    data->upos = NULL;
+    data->uaf = NULL;
     if (OPT_A) {
-        int af_status = read_af(i2, af_fn, uchr);
+        int af_status = read_af(data, af_fn, uchr);
         if (af_status == 1) {
-            destroy_I2(i2);
+            destroy_CD(data);
             destroy_Pu_chr(puc);
             exit(1);
         }
     }
 
     if (OPT_P) {
-        int pos_status = read_pos(i2, pos_fn, uchr);
+        int pos_status = read_pos(data, pos_fn, uchr);
         if (pos_status == 1) {
-            destroy_I2(i2);
+            destroy_CD(data);
             destroy_Pu_chr(puc);
             exit(1);
         }
     }
 
-    Prob_sum** ptab = malloc(i2->n_sites * sizeof(Prob_sum*));
-    for (int i = 0; i < i2->n_sites; i++) {
-        ptab[i] = malloc(sizeof(Prob_sum));
-        ptab[i]->failed_filters = 0;
-    }
-    unsigned long** nCk = init_nCk(USER_MAX_COV);
-    Cov_dist* idist = malloc(sizeof(Cov_dist));
-    memset(idist->dist, 0, sizeof(unsigned long) * (USER_MAX_COV+1));
-    
-    double cull_p = do_pD_calc(nCk, ptab, i2, puc, target_dp, idist);
-
-    // too many threads specified? reduce them to match number of samples
-    if (NUM_THREADS > n_samples) {
-        NUM_THREADS = n_samples;
-    }
-
-    Comp_args cargs[NUM_THREADS];
-    int r = n_samples % NUM_THREADS;
-    // every thread will process at least this many samples
-    int batch_size = (n_samples - r) / NUM_THREADS;
-    // flag for including the remaining samples in the last thread
-    int include_r = 0;
-    int thr_nsamples = batch_size;
-
-    int rc;
-    pthread_t thr[NUM_THREADS];
-    Sampl* batches[NUM_THREADS];
-
-    int cd_status = chdir(out_dir);
-    if (cd_status) {
-        fprintf( stderr, "[::] ERROR in do_compare(): Cannot access output directory %s.\n", out_dir );
+    if (!IN_VCF && !IN_IMPUTE) {
+        fprintf( stderr, "[::] ERROR: Missing genotype files.\n" );
+        destroy_Pu_chr(puc);
+        destroy_CD(data);
         exit(1);
     }
-    for (int ti = 0; ti < NUM_THREADS; ti++) {
-        // last thread? if so will also process the remaining samples
-        if (ti == NUM_THREADS-1) {
-            thr_nsamples = batch_size+r;
-            include_r = 1;
-        }
-        batches[ti] = malloc(thr_nsamples * sizeof(Sampl));
-        make_batch(i2->samples, batches[ti], ti, batch_size, r, include_r);
 
-        cargs[ti].str_cmd = str_cmd;
-        cargs[ti].i2 = i2;
-        cargs[ti].ptab = ptab;
-        cargs[ti].samples = batches[ti];
-        cargs[ti].n_samples = thr_nsamples;
-        cargs[ti].cull_p = cull_p;
-        cargs[ti].dist = idist;
+    else if (IN_VCF && IN_IMPUTE) {
+        fprintf( stderr, "[::] ERROR: 2 types of genotype inputs detected. Please choose either IMPUTE or VCF format.\n" );
+        destroy_Pu_chr(puc);
+        destroy_CD(data);
+        exit(1);
+    }
 
-        if ((rc = pthread_create(&thr[ti], NULL, do_compare, &cargs[ti]))) {
-            fprintf( stderr, "[::] ERROR in pthread_create(), return code = %d.\n", rc);
-            for (int i = 0; i < i2->n_sites; i++) {
-                free(ptab[i]);
-            }
-            free(ptab);
-            free(batches[ti]);
-            free(idist);
-            destroy_I2(i2);
-            destroy_nCk(nCk, USER_MAX_COV);
+    else if (IN_VCF) {
+        File_Src* vcf_fp = init_FS(vcf_fn);
+        if (!vcf_fp) {
             destroy_Pu_chr(puc);
-            return EXIT_FAILURE;
+            destroy_CD(data);
+            destroy_FS(vcf_fp);
+            exit(1);
         }
+        
+        // skip metadata lines
+        char line[MAX_LINE_LEN], header[MAX_LINE_LEN];
+        get_line_FS(vcf_fp, line);
+        while (strstr(line, "##") == line) {
+            get_line_FS(vcf_fp, line);
+        }
+
+        if (sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\t%30720[^\n]", header) == 1) {
+            int sample_flag = vcf_parse_samples(header, data);
+            if (sample_flag) {
+                destroy_Pu_chr(puc);
+                destroy_CD(data);
+                destroy_FS(vcf_fp);
+                exit(1);
+            }
+        }
+        rewind_FS(vcf_fp);
+        
+        if (OPT_S1) { 
+            int read_samples_res = read_sf(data, sample_fn);
+            if (read_samples_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(vcf_fp);
+                exit(1);
+            }
+        }
+
+        else if (OPT_S2) {
+            int read_samples_res = read_scmd(data, sample_str);
+            if (read_samples_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(vcf_fp);
+                exit(1);
+            }
+        }
+
+        if (OPT_B) {
+            int read_refpanel_res = read_rf(data, ref_fn);
+            if (read_refpanel_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(vcf_fp);
+                exit(1);
+            }
+        }
+
+        unsigned long** nCk = init_nCk(USER_MAX_COV);
+        Dpdist* pu_dist = malloc(sizeof(Dpdist));
+        memset(pu_dist->dist, 0, sizeof(unsigned long) * (USER_MAX_COV+1));
+        compare_vcf(vcf_fp, data, puc, nCk, target_dp, pu_dist, out_dir, user_cmd);
+        destroy_FS(vcf_fp);
+        destroy_nCk(nCk, USER_MAX_COV);
+        free(pu_dist);
     }
 
-    // block until all threads complete
-    for (int ti = 0; ti < NUM_THREADS; ti++) {
-        pthread_join(thr[ti], NULL);
-        free(batches[ti]);
+    else if (IN_IMPUTE) {
+        File_Src* hap_fp = init_FS(hap_fn);
+        File_Src* legend_fp = init_FS(legend_fn);
+        if (!hap_fp || !legend_fp) {
+            destroy_CD(data);
+            destroy_Pu_chr(puc);
+            fprintf( stderr, "[::] ERROR parsing hap/legend/indv data; make sure inputs are valid.\n" );
+            exit(1);
+        }
+
+        int res = read_indv(data, indv_fn);
+        if (res) {
+            destroy_CD(data);
+            destroy_Pu_chr(puc);
+            destroy_FS(hap_fp);
+            destroy_FS(legend_fp);
+            exit(1);
+        }
+
+        if (OPT_S1) { 
+            int read_samples_res = read_sf(data, sample_fn);
+            if (read_samples_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(hap_fp);
+                destroy_FS(legend_fp);
+                exit(1);
+            }
+        }
+
+        else if (OPT_S2) {
+            int read_samples_res = read_scmd(data, sample_str);
+            if (read_samples_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(hap_fp);
+                destroy_FS(legend_fp);
+                exit(1);
+            }
+        }
+
+        if (OPT_B) {
+            int read_refpanel_res = read_rf(data, ref_fn);
+            if (read_refpanel_res) {
+                destroy_CD(data);
+                destroy_Pu_chr(puc);
+                destroy_FS(hap_fp);
+                destroy_FS(legend_fp);
+                exit(1);
+            }
+        }
+        
+        unsigned long** nCk = init_nCk(USER_MAX_COV);
+        Dpdist* pu_dist = malloc(sizeof(Dpdist));
+        memset(pu_dist->dist, 0, sizeof(unsigned long) * (USER_MAX_COV+1));
+        compare_impute(hap_fp, legend_fp, data, puc, nCk, target_dp, pu_dist, out_dir, user_cmd);
+        destroy_FS(hap_fp);
+        destroy_FS(legend_fp);
+        destroy_nCk(nCk, USER_MAX_COV);
+        free(pu_dist);
     }
-    
-    for (int i = 0; i < i2->n_sites; i++) {
-        free(ptab[i]);
-    }
-    free(ptab);
-    free(idist);
-    destroy_I2(i2); 
-    destroy_nCk(nCk, USER_MAX_COV);
+    destroy_CD(data);
     destroy_Pu_chr(puc);
-
     end = clock();
     time_elapsed = ( (double)(end-start)  / CLOCKS_PER_SEC ) / 60;
     fprintf( stderr, "Run time: %f minutes.\n", time_elapsed );
