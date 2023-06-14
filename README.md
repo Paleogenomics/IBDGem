@@ -71,10 +71,10 @@ rsID, chrom, allele1, allele2, you can use the ```gt2vcf.py``` script included i
 first convert the genotype file to VCF format (see the [Auxiliary files](#auxiliary-files) section).
 
 #### Linkage disequilibrium (LD) mode
-The latest version of IBDGem, IBDGem2.0, provides an option (```--LD```) to take linkage disequilibrium
-among alleles into account when calculating the likelihood of the background model (IBD0). To do this,
-the program uses genotypes from a reference set of samples, which consists of either all samples from the
-VCF/IMPUTE files (default) or a specific subset of those samples specified via ```--background-list```.
+IBDGem version 2.0 provides an option (```--LD```) to take linkage disequilibrium among alleles into account
+when calculating the likelihood of the background model (IBD0). To do this, the program uses genotypes
+from a reference set of samples, which consists of either all samples from the VCF/IMPUTE files (default)
+or a specific subset of those samples specified via ```--background-list```.
 IBDGem will then compare the Pileup data against these background individuals and take the average to be
 the likelihood of the data under the IBD0 model, over a genomic segment (determined via ```--window-size```).
 
