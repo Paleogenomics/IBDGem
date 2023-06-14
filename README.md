@@ -119,12 +119,12 @@ The resulting VCF file can then be converted to IMPUTE normally with ```vcftools
 
 ### Output
 IBDGem generates 2 tab-delimited files:
-(1) Table file (\*.tab.txt) with information about each site in the following fields:
+1. Table file (\*.tab.txt) with information about each site in the following fields:
   **CHR, rsID, POS, REF, ALT, AF, DP, SQ_NREF, SQ_NALT, GT_A0, GT_A1, LIBD0, LIBD1, LIBD2**.
     Each row corresponds to a single SNP, and the last 3 columns correspond to the likelihoods 
     of model IBD0, IBD1, and IBD2, respectively (these likelihoods are *NOT* calculated under
     LD mode, even with ```--LD``` option specified).
-(2) Summary file (\*.summary.txt) with information about each genomic segment in the
+2. Summary file (\*.summary.txt) with information about each genomic segment in the
     following fields: **SEGMENT, START, END, LIBD0, LIBD1, LIBD2, NUM_SITES**. **START** and
     **END** correspond to the physical coordinates of the first and last SNP in the segment,
     respectively. **NUM_SITES** corresponds to the number of SNPs within the segment over
