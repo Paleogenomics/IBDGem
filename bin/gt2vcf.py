@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+### Script for converting genotype report files with fields rsID, chrom, allele1, allele2 to VCF format
+
 import sys
 import pandas as pd
 import numpy as np

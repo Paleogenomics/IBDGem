@@ -240,7 +240,7 @@ Segment, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
 The ```bin``` directory contains additional Python and Bash scripts for preparing/summarizing 
 IBDGem input/output. The files included are:
 
-#### gt2vcf.py
+### gt2vcf.py
 Reformats general genotype reports to VCF, which can then be further converted to IMPUTE if desired.
 It requires a reference file with information about the reference and alternate alleles at each
 site to fill in the necessary columns in the output VCF.
@@ -253,11 +253,11 @@ gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allel
 Usage: python gt2vcf.py [genotype-file] [info-file] [sampleID] [out-file]
 ```
 
-#### sum-hiddengem.py
+### sum-hiddengem.py
 Summarizes HiddenGem's output from multiple chromosomes and estimates genome-wide IBD0, IBD1,
 and IBD2 proportions. Takes in a tab-delimited file  with 2 columns (no header): **CHROM** (name of
 chromosome, with 'chr' prefix) and **HIDDENGEM_FILE_PATH** (path to HiddenGem output file associated
-with that chromosome); one line per chromosome/file. Please see example input file
+with that chromosome); one line per chromosome/file. See example input file
 ```sample1.sample2.hiddengem-list.txt```.
 The script produces a file with 8 columns:
 **CHROM, N_SEGMENTS, N_IBD0, N_IBD1, N_IBD2, FRAC_IBD0, FRAC_IBD1, FRAC_IBD2** for each chromosome, in
@@ -269,11 +269,11 @@ sum-hiddengem.py: Summarizes HiddenGem outputs and calculates total proportion o
 Usage: python sum-hiddengem.py [-i/--input] hiddengem-file-paths.txt [-o/--output] output-statistics.txt
 ```
 
-#### chrarm-stats.py
+### chrarm-stats.py
 Calculates aggregated LLRs over whole chromosome arms, excluding centromeric regions. Takes in a tab-
 delimited file with 2 columns (no header): **CHROM** (name of chromosome, with 'chr' prefix) and
 **SUMMARY_FILE_PATH** (IBDGem-produced summary file associated with that chromosome); one line per
-chromosome/file. Please see example input file ```sample1.sample2.summary-list.txt```. The reference 
+chromosome/file. See example input file ```sample1.sample2.summary-list.txt```. The reference 
 genome used (**hg19** *or* **hg38**) is also required via option ```--build```.
 Note that for acrocentric chromosomes (13, 14, 15, 21, 22), the aggregated LLR values
 for the p-arm will likely to be NaN because the first segment in the summary file always overlaps with
@@ -290,9 +290,10 @@ Usage: python chrarm-stats.py [-s/--summaries] summary-file-paths.txt [-b/--buil
                               [-/--out] out-prefix
 ```
 
-#### plot-chrarm-stats.py
+### plot-chrarm-stats.py
 Generates scatterplots for visualizing chromosome arm LLR statistics. Takes in the output file from 
-```chrarm-stats.py``` and produces two plots: one of LLR(IBD2/IBD0) and one of LLR(IBD1/IBD0).
+```chrarm-stats.py``` and produces two plots: one of LLR(IBD2/IBD0) and one of LLR(IBD1/IBD0). See
+example plots ```NA19685.NA19660.IBD2-IBD0.plot.png``` and ```NA19685.NA19660.IBD1-IBD0.plot.png```.
 ```
 plot-chrarm-stats.py: Creates LLR(IBD2/IBD0) and LLR(IBD1/IBD0) scatterplots using aggregated
                       chromosome-arm LLR values from chrarm-stats.py.
@@ -300,7 +301,7 @@ plot-chrarm-stats.py: Creates LLR(IBD2/IBD0) and LLR(IBD1/IBD0) scatterplots usi
 Usage: python plot-chrarm-stats.py [-i/--in] chromosome-arm-llrs.txt [-o/--out] out-prefix 
 ```
 
-#### chrarm-stats.sh
+### chrarm-stats.sh
 Bash script for running ```chrarm-stats.py``` and ```plot-chrarm-stats.py``` in one single command,
 generating a chromosome-arm statistics file and 2 scatterplots.
 ```
