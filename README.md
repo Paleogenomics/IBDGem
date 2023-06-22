@@ -92,10 +92,11 @@ ibdgem [--LD] -V [vcf-file] -P [pileup-file] [other options...]
 the VCF/IMPUTE files. This, however, can lead to decreased accuracy in likelihood calculation 
 if the number of individuals is small (i.e. fewer than 50). Thus, it is recommended in this case that 
 the user provides allele frequencies calculated from a larger reference panel (such as the 1000
-Genomes) in a separate file via the  ```--allele-freqs``` option. This is especially important
-when running the program under the regular, non-LD mode, where likelihoods of the IBD0 model are
-calculated on a per-site basis rather than per-haplotype and are thus more dependent on allele
-frequencies.
+Genomes) in a separate file via the  ```--allele-freqs``` option. This is important when running
+the program under the regular, non-LD mode, where likelihoods of the IBD0 model are calculated on
+a per-site basis rather than per-haplotype and are thus more dependent on allele frequencies.
+Similarly, in LD mode, it is important to provide at least 50 samples as reference genotypes to
+accurately model the IBD0 state.
 
 2. When running IBDGem under LD mode, it is important to make sure that the genotype individuals
 that are used as background are *unrelated* to each other and to the Pileup individual. If there is
@@ -109,7 +110,11 @@ that one subject individual, you can set the Pileup sample name to be the same a
 subject individual via ```--pileup-name```, and the program will automatically use all other samples in
 the VCF as background, without having to explicitly specify them with ```--background-list```.
 
-3. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
+3. For relatedness detection, where calculation of IBD1 is more relevant, it is recommended to run
+IBDGem in non-LD mode since the program is not yet capable of incorporating phase information that
+would be required to estimate IBD1 in the presence of LD.
+
+4. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
 phased data, but IBDGem does not need phase information, one can superficially modify the VCF to
 change the genotype notation (```A0/A1``` to ```A0|A1```) with the bash command:
 ```bash
@@ -232,11 +237,13 @@ Segment, IBD0_Score, IBD1_Score, IBD2_Score, Inferred_State
 
 
 ## Auxiliary files:
-The ```bin``` directory contains an independent Python script for converting tab-delimited
-genotype reports to VCF format, which can then be further converted to IMPUTE if desired.
+The ```bin``` directory contains additional Python and Bash scripts for preparing/summarizing 
+IBDGem input/output. The files included are:
+
+#### gt2vcf.py
+Reformats general genotype reports to VCF, which can then be further converted to IMPUTE if desired.
 It requires a reference file with information about the reference and alternate alleles at each
 site to fill in the necessary columns in the output VCF.
-#### gt2vcf.py
 ```
 gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allele1, allele2
            (in that order) to VCF format.
@@ -245,7 +252,71 @@ gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allel
 
 Usage: python gt2vcf.py [genotype-file] [info-file] [sampleID] [out-file]
 ```
-**Note**: ```gt2vcf.py``` requires the Python libraries ```pandas``` and ```numpy```.
+
+#### sum-hiddengem.py
+Summarizes HiddenGem's output from multiple chromosomes and estimates genome-wide IBD0, IBD1,
+and IBD2 proportions. Takes in a tab-delimited file  with 2 columns (no header): **CHROM** (name of
+chromosome, with 'chr' prefix) and **HIDDENGEM_FILE_PATH** (path to HiddenGem output file associated
+with that chromosome); one line per chromosome/file. Please see example input file
+```sample1.sample2.hiddengem-list.txt```.
+The script produces a file with 8 columns:
+**CHROM, N_SEGMENTS, N_IBD0, N_IBD1, N_IBD2, FRAC_IBD0, FRAC_IBD1, FRAC_IBD2** for each chromosome, in
+addition to genome-wide statistics.
+```
+sum-hiddengem.py: Summarizes HiddenGem outputs and calculates total proportion of the genome
+                  shared IBD0, IBD1, and IBD2 between two samples.
+                  
+Usage: python sum-hiddengem.py [-i/--input] hiddengem-file-paths.txt [-o/--output] output-statistics.txt
+```
+
+#### chrarm-stats.py
+Calculates aggregated LLRs over whole chromosome arms, excluding centromeric regions. Takes in a tab-
+delimited file with 2 columns (no header): **CHROM** (name of chromosome, with 'chr' prefix) and
+**SUMMARY_FILE_PATH** (IBDGem-produced summary file associated with that chromosome); one line per
+chromosome/file. Please see example input file ```sample1.sample2.summary-list.txt```. The reference 
+genome used (**hg19** *or* **hg38**) is also required via option ```--build```.
+Note that for acrocentric chromosomes (13, 14, 15, 21, 22), the aggregated LLR values
+for the p-arm will likely to be NaN because the first segment in the summary file always overlaps with
+the centromere. These values can thus be ignored.
+The script produces a file with 5 columns: **CHROM,
+parm_IBD2/IBD0, qarm_IBD2/IBD0, parm_IBD1/IBD0, qarm_IBD1/IBD0**. In determining whether the sequence data
+comes from the same individual or an unrelated person, the chromosome arm with the **lowest** LLR(IBD2/IBD0)
+value should be reported.
+```
+chrarm-stats.py: Calculates LLR statistics aggregated over whole chromosome arms,
+                 excluding centromeric regions.
+
+Usage: python chrarm-stats.py [-s/--summaries] summary-file-paths.txt [-b/--build] hg19/hg38
+                              [-/--out] out-prefix
+```
+
+#### plot-chrarm-stats.py
+Generates scatterplots for visualizing chromosome arm LLR statistics. Takes in the output file from 
+```chrarm-stats.py``` and produces two plots: one of LLR(IBD2/IBD0) and one of LLR(IBD1/IBD0).
+```
+plot-chrarm-stats.py: Creates LLR(IBD2/IBD0) and LLR(IBD1/IBD0) scatterplots using aggregated
+                      chromosome-arm LLR values from chrarm-stats.py.
+
+Usage: python plot-chrarm-stats.py [-i/--in] chromosome-arm-llrs.txt [-o/--out] out-prefix 
+```
+
+#### chrarm-stats.sh
+Bash script for running ```chrarm-stats.py``` and ```plot-chrarm-stats.py``` in one single command,
+generating a chromosome-arm statistics file and 2 scatterplots.
+```
+chrarm-stats.sh: Aggregate IBD2/IBD0 and IBD1/IBD0 LLRs over chromosome arm
+                 and generate plots of the resulting statistics.
+
+Usage: ./chrarm-stats.sh -i summary-file-paths.txt -b hg19/hg38 -o out-prefix
+Options:
+-i    Tab-delimited file with 2 columns (no header): CHROM (chromosome name with 'chr' prefix)
+      and SUMMARY_FILE_PATH (path to associated summary file). One line per chromosome/summary file.
+-b    Reference genome build used (hg19/hg38).
+-o    Output prefix for resulting statistics file and plots.
+-h    Show help message.
+```
+
+**Note**: Some Python scripts require the Python libraries ```pandas``` and ```numpy```.
 These libraries can be installed with ```pip```:
 ```bash
 pip install pandas
