@@ -71,12 +71,17 @@ rsID, chrom, allele1, allele2, you can use the ```gt2vcf.py``` script included i
 first convert the genotype file to VCF format (see the [Auxiliary files](#auxiliary-files) section).
 
 #### Linkage disequilibrium (LD) mode
-IBDGem version 2.0 provides an option (```--LD```) to take linkage disequilibrium among alleles into account
-when calculating the likelihood of the background model (IBD0). To do this, the program uses genotypes
-from a reference set of samples, which consists of either all samples from the VCF/IMPUTE files (default)
-or a specific subset of those samples specified via ```--background-list```.
-IBDGem will then compare the Pileup data against these background individuals and take the average to be
-the likelihood of the data under the IBD0 model, over a genomic segment (determined via ```--window-size```).
+Starting from version 2.0, IBDGem provides an option (```--LD```) to take linkage disequilibrium among alleles
+into account when calculating the likelihood of the IBD0 and IBD1 models. To do this, the program uses phased
+genotypes from a reference set of samples, which consists of either all samples from the VCF/IMPUTE files
+(default) or a specific subset of those samples specified via ```--background-list```.
+For IBD0, IBDGem will then compare the Pileup data against the genotypes of these background individuals and
+take the average to be the likelihood of the data under the IBD0 model, over a genomic segment (determined via
+```--window-size```). For IBD1, IBDGem creates a pseudo diploid genotype by combining one haplotype from the
+target individual and one haplotype from each individual in the reference panel, over a genomic segment, then
+compares the Pileup data against these pseudo genotypes, taking the average over all possible pseudo genotype
+combinations (4 combinations per reference individual) to be the likelihood of the IBD1 model under LD.
+
 
 The program can be run by customizing the general command:
 ```bash
@@ -93,10 +98,10 @@ the VCF/IMPUTE files. This, however, can lead to decreased accuracy in likelihoo
 if the number of individuals is small (i.e. fewer than 50). Thus, it is recommended in this case that 
 the user provides allele frequencies calculated from a larger reference panel (such as the 1000
 Genomes) in a separate file via the  ```--allele-freqs``` option. This is important when running
-the program under the regular, non-LD mode, where likelihoods of the IBD0 model are calculated on
-a per-site basis rather than per-haplotype and are thus more dependent on allele frequencies.
+the program under the regular, non-LD mode, where likelihoods of the IBD0 & IBD1 models are calculated
+on a per-site basis rather than per-haplotype and are thus more dependent on allele frequencies.
 Similarly, in LD mode, it is important to provide at least 50 samples as reference genotypes to
-accurately model the IBD0 state.
+accurately model the IBD0 & IBD1 states.
 
 2. When running IBDGem under LD mode, it is important to make sure that the genotype individuals
 that are used as background are *unrelated* to each other and to the Pileup individual. If there is
@@ -110,9 +115,10 @@ that one subject individual, you can set the Pileup sample name to be the same a
 subject individual via ```--pileup-name```, and the program will automatically use all other samples in
 the VCF as background, without having to explicitly specify them with ```--background-list```.
 
-3. For relatedness detection, where calculation of IBD1 is more relevant, it is recommended to run
-IBDGem in non-LD mode since the program is not yet capable of incorporating phase information that
-would be required to estimate IBD1 in the presence of LD.
+3. For relatedness detection under LD mode, it is required that the genotypes in the reference panel
+and of the target individual are phased since the calculation of IBD1 involves combining phased haplotypes.
+This, however, is not necessary for direct comparison cases (self-vs-self or self-vs-random) as IBD0
+calculation under LD does not use phased information.
 
 4. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
 phased data, but IBDGem does not need phase information, one can superficially modify the VCF to
@@ -188,7 +194,7 @@ Usage: ./ibdgem [--LD] -H [hap-file] -L [legend-file] -I [indv-file] -P [pileup-
 -s, --sample  STR               Sample(s) to compare the sequencing data against; comma-separated
                                    without spaces if more than one (e.g. sample1,sample2,etc.)
 -B, --background-list  FILE     File containing subset of samples to be used as the background panel
-                                   for calculating IBD0 in LD mode; one line per sample
+                                   for calculating IBD0 and IBD1 in LD mode; one line per sample
                                    (default: use all samples in genotype file as background)
 -p, --positions  FILE           List of sites to compare; can be in position list format with 2 columns
                                    CHROM, POS (1-based coordinates) or BED format (0-based coordinates);

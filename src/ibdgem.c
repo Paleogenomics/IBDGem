@@ -250,9 +250,13 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
             unsigned long sgmt_start, sgmt_end, previous_pos;
 
             double sum_ibd0 = 1, sum_ibd1 = 1, sum_ibd2 = 1;
-            double sum_ibd2_ref[data->n_refids];
-            for (int j = 0; j < data->n_refids; j++) {
-                sum_ibd2_ref[j] = 1;
+            double sum_ibd2_ref[data->n_refids], sum_ibd1_ref[data->n_refids*4];
+            for (int n = 0; n < data->n_refids; n++) {
+                sum_ibd2_ref[n] = 1;
+                sum_ibd1_ref[n*4] = 1;
+                sum_ibd1_ref[n*4+1] = 1;
+                sum_ibd1_ref[n*4+2] = 1;
+                sum_ibd1_ref[n*4+3] = 1;
             }
 
             while (snp_count < WINDOWSIZE) {
@@ -366,21 +370,51 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
 
                     if (LD_MODE) {
                         for (int n = 0; n < data->n_refids; n++) {
-                            double ref_ibd2;
+                            double ref_ibd2, ibd1_A0_refA0, ibd1_A0_refA1, ibd1_A1_refA0, ibd1_A1_refA1;
                             int ref_idx = data->refids[n].idx;
-                            A0 = alleles[n*2];
-                            A1 = alleles[(n*2)+1];
-                            if (A0 == 0 && A1 == 0) {
-                                ref_ibd2 = pDg00;
-                            }
-                            else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
-                                ref_ibd2 = pDg01;
-                            }
-                            else if (A0 == 1 && A1 == 1) {
-                                ref_ibd2 = pDg11;
-                            }
-                            if (ref_idx != pu_idx) {
+                            unsigned short ref_A0 = alleles[n*2];
+                            unsigned short ref_A1 = alleles[(n*2)+1];
+                            if (ref_A0 == 0 && ref_A1 == 0) {
+                                ref_ibd2 = pDg00; }
+                            else if ( (ref_A0 == 0 && ref_A1 == 1) || (ref_A0 == 1 && ref_A1 == 0) ) {
+                                ref_ibd2 = pDg01; }
+                            else if (ref_A0 == 1 && ref_A1 == 1) {
+                                ref_ibd2 = pDg11; }
+
+                            if (A0 == 0 && ref_A0 == 0) {
+                                ibd1_A0_refA0 = pDg00; }
+                            else if ( (A0 == 0 && ref_A0 == 1) || (A0 == 1 && ref_A0 == 0) ) {
+                                ibd1_A0_refA0 = pDg01; }
+                            else if (A0 == 1 && ref_A0 == 1) {
+                                ibd1_A0_refA0 = pDg11; }
+                        
+                            if (A0 == 0 && ref_A1 == 0) {
+                                ibd1_A0_refA1 = pDg00; }
+                            else if ( (A0 == 0 && ref_A1 == 1) || (A0 == 1 && ref_A1 == 0) ) {
+                                ibd1_A0_refA1 = pDg01; }
+                            else if (A0 == 1 && ref_A1 == 1) {
+                                ibd1_A0_refA1 = pDg11; }
+                        
+                            if (A1 == 0 && ref_A0 == 0) {
+                                ibd1_A1_refA0 = pDg00; }
+                            else if ( (A1 == 0 && ref_A0 == 1) || (A1 == 1 && ref_A0 == 0) ) {
+                                ibd1_A1_refA0 = pDg01; }
+                            else if (A1 == 1 && ref_A0 == 1) {
+                                ibd1_A1_refA0 = pDg11; }
+                        
+                            if (A1 == 0 && ref_A1 == 0) {
+                                ibd1_A1_refA1 = pDg00; }
+                            else if ( (A1 == 0 && ref_A1 == 1) || (A1 == 1 && ref_A1 == 0) ) {
+                                ibd1_A1_refA1 = pDg01; }
+                            else if (A1 == 1 && ref_A1 == 1) {
+                                ibd1_A1_refA1 = pDg11; }
+                        
+                            if ( (ref_idx != pu_idx) && (ref_idx != cmp_idx) ) {
                                 sum_ibd2_ref[n] *= ref_ibd2;
+                                sum_ibd1_ref[n*4] *= ibd1_A0_refA0;
+                                sum_ibd1_ref[n*4+1] *= ibd1_A0_refA1;
+                                sum_ibd1_ref[n*4+2] *= ibd1_A1_refA0;
+                                sum_ibd1_ref[n*4+3] *= ibd1_A1_refA1;
                             }
                         }
                     }
@@ -404,17 +438,19 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
             }
             int n_refpanel = data->n_refids;
             if (LD_MODE) {
-                double sum_ibd0_LD = 0;
-                for (int k = 0; k < data->n_refids; k++) {
-                    if (data->refids[k].idx != pu_idx) {
-                        sum_ibd0_LD += sum_ibd2_ref[k];
+                double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
+                for (int n = 0; n < data->n_refids; n++) {
+                    if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
+                        sum_ibd0_LD += sum_ibd2_ref[n];
+                        sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
+                                        sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
                     }
                     else {
                         n_refpanel--;
                     }
                 }
                 fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1, sum_ibd2, snp_count );
+                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
             }
             else {
                 fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
@@ -523,9 +559,13 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
             unsigned long sgmt_start, sgmt_end, previous_pos;
             
             double sum_ibd0 = 1, sum_ibd1 = 1, sum_ibd2 = 1;
-            double sum_ibd2_ref[data->n_refids];
-            for (int j = 0; j < data->n_refids; j++) {
-                sum_ibd2_ref[j] = 1;
+            double sum_ibd2_ref[data->n_refids], sum_ibd1_ref[data->n_refids*4];
+            for (int n = 0; n < data->n_refids; n++) {
+                sum_ibd2_ref[n] = 1;
+                sum_ibd1_ref[n*4] = 1;
+                sum_ibd1_ref[n*4+1] = 1;
+                sum_ibd1_ref[n*4+2] = 1;
+                sum_ibd1_ref[n*4+3] = 1;
             }
 
             while (snp_count < WINDOWSIZE) {
@@ -630,21 +670,52 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
                     // skip if individual matches Pileup name provided via -N
                     // (to avoid including self in background calculation)
                     for (int n = 0; n < data->n_refids; n++) {
-                        double ref_ibd2;
+                        double ref_ibd2, ibd1_A0_refA0, ibd1_A0_refA1, ibd1_A1_refA0, ibd1_A1_refA1;
                         int ref_idx = data->refids[n].idx;
-                        A0 = hap_buf[ref_idx*2]-'0';
-                        A1 = hap_buf[(ref_idx*2)+2]-'0';
-                        if (A0 == 0 && A1 == 0) {
-                            ref_ibd2 = pDg00;
-                        }
-                        else if ( (A0 == 0 && A1 == 1) || (A0 == 1 && A1 == 0) ) {
-                            ref_ibd2 = pDg01;
-                        }
-                        else if (A0 == 1 && A1 == 1) {
-                            ref_ibd2 = pDg11;
-                        }
-                        if (ref_idx != pu_idx) {
+                        unsigned short ref_A0 = hap_buf[ref_idx*2]-'0';
+                        unsigned short ref_A1 = hap_buf[(ref_idx*2)+2]-'0';
+                        if (ref_A0 == 0 && ref_A1 == 0) {
+                            ref_ibd2 = pDg00; }
+                        else if ( (ref_A0 == 0 && ref_A1 == 1) || (ref_A0 == 1 && ref_A1 == 0) ) {
+                            ref_ibd2 = pDg01; }
+                        else if (ref_A0 == 1 && ref_A1 == 1) {
+                            ref_ibd2 = pDg11; }
+
+                        if (A0 == 0 && ref_A0 == 0) {
+                            ibd1_A0_refA0 = pDg00; }
+                        else if ( (A0 == 0 && ref_A0 == 1) || (A0 == 1 && ref_A0 == 0) ) {
+                            ibd1_A0_refA0 = pDg01; }
+                        else if (A0 == 1 && ref_A0 == 1) {
+                            ibd1_A0_refA0 = pDg11; }
+                        
+                        if (A0 == 0 && ref_A1 == 0) {
+                            ibd1_A0_refA1 = pDg00; }
+                        else if ( (A0 == 0 && ref_A1 == 1) || (A0 == 1 && ref_A1 == 0) ) {
+                            ibd1_A0_refA1 = pDg01; }
+                        else if (A0 == 1 && ref_A1 == 1) {
+                            ibd1_A0_refA1 = pDg11; }
+                        
+                        if (A1 == 0 && ref_A0 == 0) {
+                            ibd1_A1_refA0 = pDg00; }
+                        else if ( (A1 == 0 && ref_A0 == 1) || (A1 == 1 && ref_A0 == 0) ) {
+                            ibd1_A1_refA0 = pDg01; }
+                        else if (A1 == 1 && ref_A0 == 1) {
+                            ibd1_A1_refA0 = pDg11; }
+                        
+                        if (A1 == 0 && ref_A1 == 0) {
+                            ibd1_A1_refA1 = pDg00; }
+                        else if ( (A1 == 0 && ref_A1 == 1) || (A1 == 1 && ref_A1 == 0) ) {
+                            ibd1_A1_refA1 = pDg01; }
+                        else if (A1 == 1 && ref_A1 == 1) {
+                            ibd1_A1_refA1 = pDg11; }
+                        
+                        // also skip the query genotype profile if it's in the panel
+                        if ( (ref_idx != pu_idx) && (ref_idx != cmp_idx) ) {
                             sum_ibd2_ref[n] *= ref_ibd2;
+                            sum_ibd1_ref[n*4] *= ibd1_A0_refA0;
+                            sum_ibd1_ref[n*4+1] *= ibd1_A0_refA1;
+                            sum_ibd1_ref[n*4+2] *= ibd1_A1_refA0;
+                            sum_ibd1_ref[n*4+3] *= ibd1_A1_refA1;
                         }
                     }
                 }
@@ -664,17 +735,19 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
             int n_refpanel = data->n_refids; // number of reference samples
             if (LD_MODE) {
                 // take average of IBD2 likelihoods over all ref samples
-                double sum_ibd0_LD = 0;
-                for (int k = 0; k < data->n_refids; k++) {
-                    if (data->refids[k].idx != pu_idx) {
-                        sum_ibd0_LD += sum_ibd2_ref[k];
+                double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
+                for (int n = 0; n < data->n_refids; n++) {
+                    if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
+                        sum_ibd0_LD += sum_ibd2_ref[n];
+                        sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
+                                        sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
                     }
                     else {
                         n_refpanel--;
                     }
                 }
                 fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1, sum_ibd2, snp_count );
+                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
             }
             else {
                 fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
@@ -723,7 +796,7 @@ void print_help(int code) {
     fprintf( stderr, "-s, --sample  STR               Sample(s) to compare the sequencing data against; comma-separated\n" );
     fprintf( stderr, "                                   without spaces if more than one (e.g. sample1,sample2,etc.)\n" );
     fprintf( stderr, "-B, --background-list  FILE     File containing subset of samples to be used as the background panel\n" );
-    fprintf( stderr, "                                   for calculating IBD0 in LD mode; one line per sample\n" );
+    fprintf( stderr, "                                   for calculating IBD0 and IBD1 in LD mode; one line per sample\n" );
     fprintf( stderr, "                                   (default: use all samples in genotype file as background)\n" );
     fprintf( stderr, "-p, --positions  FILE           List of sites to compare; can be in position list format with 2 columns\n" );
     fprintf( stderr, "                                   CHROM, POS (1-based coordinates) or BED format (0-based coordinates);\n" );
