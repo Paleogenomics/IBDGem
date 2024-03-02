@@ -31,7 +31,7 @@ while getopts ":hi:b:o:" option; do
    esac
 done
 
-echo "Calculating aggregated LLRs..."
+echo "Calculating chromosome-arm LLRs..."
 python chrarm-stats.py -s ${IN} -b ${BUILD} -o ${OUT}
 echo "Done."
 echo "Generating plots..."

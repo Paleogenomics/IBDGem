@@ -254,7 +254,7 @@ site to fill in the necessary columns in the output VCF.
 gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allele1, allele2
            (in that order) to VCF format.
            Requires reference info file with fields chrom, pos, ref, alt for each known SNP.
-           (See example info file in supplementary folder).
+           (See example info file in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files)).
 
 Usage: python gt2vcf.py [genotype-file] [info-file] [sampleID] [out-file]
 ```
@@ -264,7 +264,7 @@ Summarizes HiddenGem's output from multiple chromosomes and estimates genome-wid
 and IBD2 proportions. Takes in a tab-delimited file  with 2 columns (no header): **CHROM** (name of
 chromosome, with 'chr' prefix) and **HIDDENGEM_FILE_PATH** (path to HiddenGem output file associated
 with that chromosome); one line per chromosome/file. See example input file
-```sample1.sample2.hiddengem-list.txt```.
+```sample1.sample2.hiddengem-list.txt``` in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files).
 The script produces a file with 8 columns:
 **CHROM, N_SEGMENTS, N_IBD0, N_IBD1, N_IBD2, FRAC_IBD0, FRAC_IBD1, FRAC_IBD2** for each chromosome, in
 addition to genome-wide statistics.
@@ -279,8 +279,7 @@ Usage: python sum-hiddengem.py [-i/--input] hiddengem-file-paths.txt [-o/--outpu
 Calculates aggregated LLRs over whole chromosome arms, excluding centromeric regions. Takes in a tab-
 delimited file with 2 columns (no header): **CHROM** (name of chromosome, with 'chr' prefix) and
 **SUMMARY_FILE_PATH** (IBDGem-produced summary file associated with that chromosome); one line per
-chromosome/file. See example input file ```sample1.sample2.summary-list.txt```. The reference 
-genome used (**hg19** *or* **hg38**) is also required via option ```--build```.
+chromosome/file. See example input file ```sample1.sample2.summary-list.txt``` in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files). The reference genome used (**hg19** *or* **hg38**) is also required via option ```--build```.
 Note that for acrocentric chromosomes (13, 14, 15, 21, 22), the aggregated LLR values
 for the p-arm will likely to be NaN because the first segment in the summary file always overlaps with
 the centromere. These values can thus be ignored.
@@ -299,7 +298,8 @@ Usage: python chrarm-stats.py [-s/--summaries] summary-file-paths.txt [-b/--buil
 ### plot-chrarm-stats.py
 Generates scatterplots for visualizing chromosome arm LLR statistics. Takes in the output file from 
 ```chrarm-stats.py``` and produces two plots: one of LLR(IBD2/IBD0) and one of LLR(IBD1/IBD0). See
-example plots ```NA19685.NA19660.IBD2-IBD0.plot.png``` and ```NA19685.NA19660.IBD1-IBD0.plot.png```.
+example plots ```NA19685.NA19660.IBD2-IBD0.plot.png``` and ```NA19685.NA19660.IBD1-IBD0.plot.png```
+in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files).
 ```
 plot-chrarm-stats.py: Creates LLR(IBD2/IBD0) and LLR(IBD1/IBD0) scatterplots using aggregated
                       chromosome-arm LLR values from chrarm-stats.py.

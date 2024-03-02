@@ -44,19 +44,22 @@ def get_hg_stats(hg_files, out):
         df = pd.read_table(p, header=0, delimiter='\t', comment="#", usecols=['Inferred_State'], dtype={0: int})
         states = df['Inferred_State'].to_numpy()
         n_segs = len(states)
-        n_ibd0 = len(np.where(states == 0))     
-        n_ibd1 = len(np.where(states == 1))
-        n_ibd2 = len(np.where(states == 2))
+        n_ibd0 =  (states == 0).sum()     
+        n_ibd1 = (states == 1).sum()
+        n_ibd2 = (states == 2).sum()
         tot_nsegs += n_segs
         tot_ibd0 += n_ibd0
         tot_ibd1 += n_ibd1
         tot_ibd2 += n_ibd2
         out_file.write("{0}\t{1:d}\t{2:d}\t{3:d}\t{4:d}\t{5:.3f}\t{6:.3f}\t{7:.3f}\n".format(c,
                        n_segs, n_ibd0, n_ibd1, n_ibd2, n_ibd0/n_segs, n_ibd1/n_segs, n_ibd2/n_segs))
+    pct_ibd0 = (tot_ibd0/tot_nsegs)*100
+    pct_ibd1 = (tot_ibd1/tot_nsegs)*100
+    pct_ibd2 = (tot_ibd2/tot_nsegs)*100
     out_file.write("# Total segments = {0:d}\n".format(tot_nsegs))
-    out_file.write("# Total IBD0 (%) = {0:.3f}\n".format(tot_ibd0/tot_nsegs))
-    out_file.write("# Total IBD1 (%) = {0:.3f}\n".format(tot_ibd1/tot_nsegs))
-    out_file.write("# Total IBD2 (%) = {0:.3f}\n".format(tot_ibd2/tot_nsegs))
+    out_file.write("# Total IBD0 (%) = {0:.3f}\n".format(pct_ibd0))
+    out_file.write("# Total IBD1 (%) = {0:.3f}\n".format(pct_ibd1))
+    out_file.write("# Total IBD2 (%) = {0:.3f}\n".format(pct_ibd2))
     out_file.close()
     return None
 

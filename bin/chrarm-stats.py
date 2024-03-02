@@ -79,7 +79,7 @@ def get_chrarm_stats(build, sum_files, out_prefix):
         sf = open(p, 'r')
         sf.readline()
         line = sf.readline()
-        vals = line.rstrip().split("\t")
+        vals = line.rstrip().split()
         start = np.int64(vals[1])
         end = np.int64(vals[2])
         # if 1st bin already overlaps centromere, set values to NA
@@ -107,7 +107,7 @@ def get_chrarm_stats(build, sum_files, out_prefix):
             q20 += np.log2(resolve(np.float128(vals[5]))/resolve(np.float128(vals[3])))
             q10 += np.log2(resolve(np.float128(vals[4]))/resolve(np.float128(vals[3])))
             line = sf.readline()
-            vals = line.rstrip().split("\t")
+            vals = line.rstrip().split()
         out_file.write("%s\t%.3e\t%.3e\t%.3e\t%.3e\n" % (c, p20, q20, p10, q10))
         sf.close()
     out_file.close()

@@ -242,6 +242,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
 
         unsigned int cmp_idx = data->uids[i].idx;
 
+        int end_of_file = 0;
         int sgmt_count = 1;
         get_line_FS(vcf_fp, line);
         char* read_vcf_res = &line[0];
@@ -262,6 +263,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
             while (snp_count < WINDOWSIZE) {
                 read_vcf_res = get_line_FS(vcf_fp, line);
                 if (!read_vcf_res) {
+                    end_of_file = 1;
                     sgmt_end = previous_pos;
                     break;
                 }
@@ -436,27 +438,29 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
                     skipped++;
                 }
             }
-            int n_refpanel = data->n_refids;
-            if (LD_MODE) {
-                double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
-                for (int n = 0; n < data->n_refids; n++) {
-                    if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
-                        sum_ibd0_LD += sum_ibd2_ref[n];
-                        sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
-                                        sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
+            if (!end_of_file) {
+                int n_refpanel = data->n_refids;
+                if (LD_MODE) {
+                    double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
+                    for (int n = 0; n < data->n_refids; n++) {
+                        if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
+                            sum_ibd0_LD += sum_ibd2_ref[n];
+                            sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
+                                            sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
+                        }
+                        else {
+                            n_refpanel--;
+                        }
                     }
-                    else {
-                        n_refpanel--;
-                    }
+                    fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                            sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
                 }
-                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
+                else {
+                    fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                            sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
+                }
+                sgmt_count++;
             }
-            else {
-                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
-            }
-            sgmt_count++;
         }    
         fprintf( tab_fp, "# FINAL COVERAGE DISTRIBUTION:\n" );
         fprintf( tab_fp, "# COVERAGE N_SITES\n" );
@@ -550,6 +554,7 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
         char hap_buf[MAX_LINE_LEN];
         char legend_buf[MAX_LINE_LEN];
         
+        int end_of_file = 0;
         int sgmt_count = 1;
         get_line_FS(legend_fp, legend_buf); // skip header in legend file
         char* read_hap_res = &hap_buf[0];
@@ -572,6 +577,7 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
                 read_hap_res = get_line_FS(hap_fp, hap_buf);
                 read_legend_res = get_line_FS(legend_fp, legend_buf);
                 if (!read_hap_res || !read_legend_res) {
+                    end_of_file = 1;
                     sgmt_end = previous_pos;
                     break;
                 }
@@ -732,28 +738,30 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
                                    hap_buf[cmp_idx*2], hap_buf[(cmp_idx*2)+2], ibd0, ibd1, ibd2 ); 
                 processed++;
             }
-            int n_refpanel = data->n_refids; // number of reference samples
-            if (LD_MODE) {
-                // take average of IBD2 likelihoods over all ref samples
-                double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
-                for (int n = 0; n < data->n_refids; n++) {
-                    if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
-                        sum_ibd0_LD += sum_ibd2_ref[n];
-                        sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
-                                        sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
+            if (!end_of_file) {
+                int n_refpanel = data->n_refids; // number of reference samples
+                if (LD_MODE) {
+                    // take average of IBD2 likelihoods over all ref samples
+                    double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
+                    for (int n = 0; n < data->n_refids; n++) {
+                        if ( (data->refids[n].idx != pu_idx) && (data->refids[n].idx != cmp_idx) ) {
+                            sum_ibd0_LD += sum_ibd2_ref[n];
+                            sum_ibd1_LD += (sum_ibd1_ref[n*4] + sum_ibd1_ref[n*4+1] + 
+                                            sum_ibd1_ref[n*4+2] + sum_ibd1_ref[n*4+3]);
+                        }
+                        else {
+                            n_refpanel--;
+                        }
                     }
-                    else {
-                        n_refpanel--;
-                    }
+                    fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                            sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
                 }
-                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0_LD/n_refpanel, sum_ibd1_LD/(n_refpanel*4), sum_ibd2, snp_count );
+                else {
+                    fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
+                            sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
+                }
+                sgmt_count++;
             }
-            else {
-                fprintf( sum_fp, "%d\t%lu\t%lu\t%e\t%e\t%e\t%d\n", sgmt_count, sgmt_start,
-                         sgmt_end, sum_ibd0, sum_ibd1, sum_ibd2, snp_count );
-            }
-            sgmt_count++;
         }
         fprintf( tab_fp, "# FINAL COVERAGE DISTRIBUTION:\n" );
         fprintf( tab_fp, "# COVERAGE N_SITES\n" );
