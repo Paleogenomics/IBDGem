@@ -150,28 +150,28 @@ we simply generate LLRs between the IBD2 and IBD0 models.
 
 
 ## Example run
-In the ```supplementary``` directory, you will find the ```ibdgem-test``` folder that contains
-a test suite of inputs (as well as example outputs) for test-running the program. The IMPUTE
-files store genotype information of 10 SNP sites for 3 samples: ```sample1```, ```sample2```,
-and ```sample3```. The ```test1.pileup```, ```test2.pileup```, and ```test3.pileup``` files 
-contain the  sequence data for those corresponding samples.
+In the [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary) directory, you will find the ```ibdgem-test``` folder with a test suite of inputs
+and outputs for test-running the program. The IMPUTE files contain genotype data at 200 SNP sites for
+3 samples: ```sample1```, ```sample2```, and ```sample3```. The ```test1.pileup```, ```test2.pileup```,
+and ```test3.pileup``` files contain the corresponding sequence data.
 
-To perform a run on these mock files, for example to compare the sequence data in ```test1.pileup```
-to the 3-sample panel whose genotypes are described in the test IMPUTEs, type:
+To perform a test run, for example to compare the sequence data in ```test1.pileup``` to the genotype
+data of all 3 samples in the IMPUTE files, type:
 ```bash
-ibdgem -H test.hap -L test.legend -I test.indv -P test1.pileup -N sample1
+./ibdgem -H test.hap -L test.legend -I test.indv -P test1.pileup -N sample1
 ```
-This will generate 3 output tables for the pairwise comparisons of sample1-vs-sample1/sample2/sample3.
-You can find these same tables in the ```output``` folder within ```ibdgem-test```.
+This will generate 3 output tables for the pairwise comparisons of sample1-vs-sample1/sample2/sample3,
+in addition to summary files with the aggregated likelihoods over 100-SNP windows for each comparison.
+You can find these files in [output](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/ibdgem-test/output).
 
-**Note**: In general, using the ```--variable-sites-only/-v``` option is recommended to exclude
+**Note**: In most cases, using the ```--variable-sites-only/-v``` option is recommended to exclude
 uninformative sites.
 
 
 ## Main program (ibdgem.c)
 Below is the full description of the main program's options:
 ```
-IBDGem-2.0: Compares low-coverage sequencing data from an unknown sample to known genotypes
+IBDGem: Compares low-coverage sequencing data from an unknown sample to known genotypes
             from a reference individual/panel and calculates the likelihood that the samples
             share 0, 1, or 2 IBD chromosomes.
 
@@ -247,14 +247,13 @@ The ```bin``` directory contains additional Python and Bash scripts for preparin
 IBDGem input/output. The files included are:
 
 ### gt2vcf.py
-Reformats general genotype reports to VCF, which can then be further converted to IMPUTE if desired.
-It requires a reference file with information about the reference and alternate alleles at each
-site to fill in the necessary columns in the output VCF.
+Reformats general genotype reports (with tab-delimited columns rsID, chromosome, position, allele1, 
+allele2) to VCF, which can be further converted to IMPUTE via ```vcftools``` if desired.
+Requires reference info file with 4 fields: chromosome, position, reference allele, alternate allele,
+per line for each SNP (see example info file in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files)).
 ```
-gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, allele1, allele2
+gt2vcf.py: Converts a tab-delimited genotype file with fields rsID, chrom, pos, allele1, allele2
            (in that order) to VCF format.
-           Requires reference info file with fields chrom, pos, ref, alt for each known SNP.
-           (See example info file in [supplementary](https://github.com/Paleogenomics/IBDGem/tree/master/supplementary/example-files)).
 
 Usage: python gt2vcf.py [genotype-file] [info-file] [sampleID] [out-file]
 ```
