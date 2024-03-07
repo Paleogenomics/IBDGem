@@ -51,8 +51,8 @@ The main program (ibdgem.c) calculates likelihoods of IBD states at each SNP. Tw
    containing genotype data from a single or multiple test individuals.
 
 The Pileup file can be generated from a BAM file with [samtools](https://www.htslib.org/doc/samtools.html):
-```bash
-samtools mpileup -o [out.pileup] [in.bam]
+``bash
+samtools mpileup --output-MQ --output [out.pileup] [in.bam]
 ```
 
 Using IMPUTE format has the advantage of being able to first filter genotypes by various metrics through [vcftools](https://vcftools.github.io/man_latest.html)
