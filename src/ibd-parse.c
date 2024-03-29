@@ -170,7 +170,6 @@ int vcf_parse_gt(char* gt, regex_t regex, int n_samples, unsigned short* alleles
     if (VCF_FRMT_PRESENT) {
         token = strtok(NULL, "\t");
     }
-    token = strtok(NULL, "\t"); //skip GT field
     for (int i = 0; i < n_samples; i++) {
         if ( genotype_ok(token, regex) )  {
             alleles[i*2] = token[0] - '0';

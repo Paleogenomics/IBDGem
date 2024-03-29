@@ -93,7 +93,20 @@ ibdgem [--LD] -V [vcf-file] -P [pileup-file] [other options...]
 ```
 
 **Important Notes**:
-1. By default, IBDGem will infer allele frequencies using the genotypes of all individuals in
+1. IBDGem is designed to be run on data from *one* chromosome at a time. If your VCF contains
+multiple chromosomes, it should be split into single-chromosome files (e.g., using ```vcftools```
+with ```--chr``` option) before being used as input. Similarly, IMPUTE-format files should also
+be single-chromosome. The Pileup file doesn't need to be divided, simply specify the chromosome
+you want to run on via the ```--chromosome/-c``` option in the IBDGem command.
+
+2. IBDGem will skip sites where the genotype is missing (```./.```) for any of the samples in the
+genotype input. To maximize the number of compared sites per sample, either impute the missing
+sites or subset the VCF by sample, then supply a separate allele frequency file with 3 columns:
+```CHR```, ```POS```, ```FREQ``` (no header) through the ```--allele-freqs/-A``` option.  This is so
+that the program can use the provided allele frequencies in its calculations instead of having to
+estimate them from the genotypes in the VCF.
+
+3. By default, IBDGem will infer allele frequencies using the genotypes of all individuals in
 the VCF/IMPUTE files. This, however, can lead to decreased accuracy in likelihood calculation 
 if the number of individuals is small (i.e. fewer than 50). Thus, it is recommended in this case that 
 the user provides allele frequencies calculated from a larger reference panel (such as the 1000
@@ -103,7 +116,7 @@ on a per-site basis rather than per-haplotype and are thus more dependent on all
 Similarly, in LD mode, it is important to provide at least 50 samples as reference genotypes to
 accurately model the IBD0 & IBD1 states.
 
-2. When running IBDGem under LD mode, it is important to make sure that the genotype individuals
+4. When running IBDGem under LD mode, it is important to make sure that the genotype individuals
 that are used as background are *unrelated* to each other and to the Pileup individual. If there is
 any relatedness, the IBD0 likelihoods will be inflated and LLR(IBD2/IBD0) will be reduced.
 In the case that you have a VCF file with several subject individuals that you want to compare the
@@ -115,12 +128,12 @@ that one subject individual, you can set the Pileup sample name to be the same a
 subject individual via ```--pileup-name```, and the program will automatically use all other samples in
 the VCF as background, without having to explicitly specify them with ```--background-list```.
 
-3. For relatedness detection under LD mode, it is required that the genotypes in the reference panel
+5. For relatedness detection under LD mode, it is required that the genotypes in the reference panel
 and of the target individual are phased since the calculation of IBD1 involves combining phased haplotypes.
 This, however, is not necessary for direct comparison cases (self-vs-self or self-vs-random) as IBD0
 calculation under LD does not use phased information.
 
-4. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
+6. In converting between VCF and IMPUTE, because the ```--IMPUTE``` argument in ```vcftools``` requires
 phased data, but IBDGem does not need phase information, one can superficially modify the VCF to
 change the genotype notation (```A0/A1``` to ```A0|A1```) with the bash command:
 ```bash
