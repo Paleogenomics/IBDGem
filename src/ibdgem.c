@@ -272,7 +272,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
                 char id[512], ref[512], alt[512], qual[512], fltr[512], info[7680];
                 char gt[MAX_LINE_LEN];
                 
-                if (sscanf(line, "%*s %lu %512[^\t] %512[^\t] %512[^\t] %512[^\t] %512[^\t] %7680[^\t] %30720[^\n]",
+                if (sscanf(line, "%*s %lu %512[^\t] %512[^\t] %512[^\t] %512[^\t] %512[^\t] %7680[^\t] %*s %30720[^\n]",
                     &pos, id, ref, alt, qual, fltr, info, gt) == 8) {
                     // skip site if not biallelic        
                     if (!is_biallelic(alt)) {
@@ -280,7 +280,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
                         continue;
                     }
                     unsigned short* alleles = malloc((data->n_ids*2) * sizeof(unsigned short));
-                    int parse_gt_res = vcf_parse_gt(gt, regex, data->n_ids, alleles);
+                    int parse_gt_res = vcf_parse_gt(gt, data->n_ids, alleles);
                     if (parse_gt_res) {
                         fprintf( stderr, "Failed to parse genotype fields at %lu. Skipping to next site.\n", pos );
                         free(alleles);
@@ -1061,7 +1061,7 @@ int main(int argc, char* argv[]) {
             get_line_FS(vcf_fp, line);
         }
 
-        if (sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\t%30720[^\n]", header) == 1) {
+        if (sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%30720[^\n]", header) == 1) {
             int sample_flag = vcf_parse_samples(header, data);
             if (sample_flag) {
                 destroy_Pu_chr(puc);

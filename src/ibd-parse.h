@@ -140,20 +140,12 @@ double find_f_vcf(unsigned short* alleles, int n_samples);
 int vcf_parse_samples(const char* header, Comp_dt* data);
 
 
-/* Checks if genotype field is valid (0s and 1s separated by | or /) 
-   Args: const char* gt - pointer to genotype string
-         regex_t regex - regular expression for pattern checking 
-   Returns: 1 if genotype valid, 0 otherwise */
-int genotype_ok(const char* gt, regex_t regex);
-
-
 /* Extracts alleles from genotype fields in VCF
    Args: char* gt - pointer to genotype fields as a single string
-         regex_t regex - regular expression for pattern checking
          int n_samples - number of genotype samples
          unsigned short* alleles - pointer to alleles array at site
    Returns: 0 if successfully parsed, 1 otherwise */
-int vcf_parse_gt(char* gt, regex_t regex, int n_samples, unsigned short* alleles);
+int vcf_parse_gt(char* gt, int n_samples, unsigned short* alleles);
 
 
 /* Frees memory allocated by Comp_dt object

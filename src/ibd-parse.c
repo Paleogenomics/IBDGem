@@ -1,8 +1,6 @@
 #include "ibd-parse.h"
 #include "file-io.h"
 
-int VCF_FRMT_PRESENT = 0;
-
 int read_indv(Comp_dt* data, const char* indv_fn) {
     File_Src* indv_fp = init_FS(indv_fn);
     if (!indv_fp) {
@@ -121,11 +119,6 @@ int vcf_parse_samples(const char* header, Comp_dt* data) {
     strcpy(buf, header);
     
     token = strtok(buf, "\t");
-    // skip FORMAT column if present
-    if (strcmp(token, "FORMAT") == 0) {
-        VCF_FRMT_PRESENT = 1;
-        token = strtok(NULL, "\t");
-    }
     while (token != NULL) {
         if (n == arr_size) {
             arr_size += 200;
@@ -154,31 +147,53 @@ int vcf_parse_samples(const char* header, Comp_dt* data) {
 }
 
 
-int genotype_ok(const char* gt, regex_t regex) {
-    int rc = regexec(&regex, gt, 0, NULL, 0);
-    if (!rc) {
-        return 1;
-    }
-    return 0;
-}
-
-
-int vcf_parse_gt(char* gt, regex_t regex, int n_samples, unsigned short* alleles) {
-    char* token;
-    token = strtok(gt, "\t");
-    // skip FORMAT column if present
-    if (VCF_FRMT_PRESENT) {
-        token = strtok(NULL, "\t");
-    }
-    for (int i = 0; i < n_samples; i++) {
-        if ( genotype_ok(token, regex) )  {
-            alleles[i*2] = token[0] - '0';
-            alleles[i*2+1] = token[2] - '0';
+int vcf_parse_gt(char* gt, int n_samples, unsigned short* alleles) {
+    size_t len = strlen(gt);
+    int i = 0;
+    int n = 0;
+    int gt_ok = 1;
+    char A1, A2, sep;
+    while ( (i < len) && (n < n_samples) ) {
+        A1 = gt[i];
+        sep = gt[i+1];
+        A2 = gt[i+2];
+        switch (A1) {
+            case '0':
+                alleles[i*2] = 0;
+                break;
+            case '1':
+                alleles[i*2] = 1;
+                break;
+            default:
+                gt_ok = 0;      
         }
-        else {
+        switch (sep) {
+            case '/':
+                break;
+            case '|':
+                break;
+            default:
+                gt_ok = 0;
+        }
+        switch (A2) {
+            case '0':
+                alleles[i*2+1] = 0;
+                break;
+            case '1':
+                alleles[i*2+1] = 1;
+                break;
+            default:
+                gt_ok = 0;
+        }
+        n++;
+        if (!gt_ok) {
+            fprintf( stderr, "%c%c%c is not a valid genotype.\n", A1, sep, A2 );
             return 1;
         }
-        token = strtok(NULL, "\t");
+        while ( (i < len) && (gt[i] != '\t') ) {
+            i++;
+        }
+        i++;
     }
     return 0;
 }
