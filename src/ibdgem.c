@@ -244,7 +244,6 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
 
         int end_of_file = 0;
         int sgmt_count = 1;
-        get_line_FS(vcf_fp, line);
         char* read_vcf_res = &line[0];
         while (read_vcf_res) {
             int snp_count = 0;
@@ -280,7 +279,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
                         continue;
                     }
                     unsigned short* alleles = malloc((data->n_ids*2) * sizeof(unsigned short));
-                    int parse_gt_res = vcf_parse_gt(gt, data->n_ids, alleles);
+                    int parse_gt_res = vcf_parse_gt(gt, regex, data->n_ids, alleles);
                     if (parse_gt_res) {
                         fprintf( stderr, "Failed to parse genotype fields at %lu. Skipping to next site.\n", pos );
                         free(alleles);
@@ -1061,7 +1060,7 @@ int main(int argc, char* argv[]) {
             get_line_FS(vcf_fp, line);
         }
 
-        if (sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%30720[^\n]", header) == 1) {
+        if ( sscanf(line, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%30720[^\n]", header) == 1 ) {
             int sample_flag = vcf_parse_samples(header, data);
             if (sample_flag) {
                 destroy_Pu_chr(puc);
@@ -1069,6 +1068,13 @@ int main(int argc, char* argv[]) {
                 destroy_FS(vcf_fp);
                 exit(1);
             }
+        }
+        else {
+            destroy_Pu_chr(puc);
+            destroy_CD(data);
+            destroy_FS(vcf_fp);
+            fprintf( stderr, "[::] ERROR parsing VCF header.\n" );
+            exit(1);
         }
         rewind_FS(vcf_fp);
         
