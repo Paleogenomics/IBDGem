@@ -551,7 +551,6 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
         char hap_buf[MAX_LINE_LEN];
         char legend_buf[MAX_LINE_LEN];
         
-        int end_of_file = 0;
         int sgmt_count = 1;
         get_line_FS(legend_fp, legend_buf); // skip header in legend file
         char* read_hap_res = &hap_buf[0];
@@ -574,7 +573,6 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
                 read_hap_res = get_line_FS(hap_fp, hap_buf);
                 read_legend_res = get_line_FS(legend_fp, legend_buf);
                 if (!read_hap_res || !read_legend_res) {
-                    end_of_file = 1;
                     sgmt_end = previous_pos;
                     break;
                 }
@@ -735,7 +733,7 @@ int compare_impute(File_Src* hap_fp, File_Src* legend_fp, Comp_dt* data, Pu_chr*
                                    hap_buf[cmp_idx*2], hap_buf[(cmp_idx*2)+2], ibd0, ibd1, ibd2 ); 
                 processed++;
             }
-            if (!end_of_file) {
+            if (snp_count > 0) {
                 int n_refpanel = data->n_refids; // number of reference samples
                 if (LD_MODE) {
                     // take average of IBD2 likelihoods over all ref samples
