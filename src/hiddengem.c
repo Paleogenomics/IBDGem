@@ -58,7 +58,11 @@ Ibd_genome* init_summary(const char* summary_fn) {
     char line[MAX_LINE_LEN + 1];
     int i = 0;
     get_line_FS(sf, line);
-    while (get_line_FS(sf, line)) {
+    while ( strchr(line, '#') == line ) {
+        get_line_FS(sf, line);
+    }
+    char* res = &line[0];
+    while (res) {
         if ( sscanf(line, "%*s\t%zu\t%zu\t%lf\t%lf\t%lf\t%d",
                 &ig->start[i],
                 &ig->end[i],
@@ -72,6 +76,7 @@ Ibd_genome* init_summary(const char* summary_fn) {
             ig->nrm_lhs[2][i] = l2/(l0+l1+l2);
             i++;
         }
+        res = get_line_FS(sf, line);
     }
     ig->n_bins = i;
     destroy_FS(sf);

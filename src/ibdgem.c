@@ -242,7 +242,6 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
 
         unsigned int cmp_idx = data->uids[i].idx;
 
-        int end_of_file = 0;
         int sgmt_count = 1;
         char* read_vcf_res = &line[0];
         while (read_vcf_res) {
@@ -262,7 +261,6 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
             while (snp_count < WINDOWSIZE) {
                 read_vcf_res = get_line_FS(vcf_fp, line);
                 if (!read_vcf_res) {
-                    end_of_file = 1;
                     sgmt_end = previous_pos;
                     break;
                 }
@@ -437,7 +435,7 @@ int compare_vcf(File_Src* vcf_fp, Comp_dt* data, Pu_chr* puc, unsigned long** nC
                     skipped++;
                 }
             }
-            if (!end_of_file) {
+            if (snp_count > 0) {
                 int n_refpanel = data->n_refids;
                 if (LD_MODE) {
                     double sum_ibd0_LD = 0, sum_ibd1_LD = 0;
